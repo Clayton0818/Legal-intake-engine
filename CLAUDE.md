@@ -10,9 +10,11 @@ A generic, commercial legal-intake AI: conversational triage, conflict-check aut
 
 The [Legal Intake Build](https://claude.ai/code/artifact/c002dcf5-570b-4d92-9afd-9cde9d8daa3e) kanban board, not this file and not any status comment in code. Read it with the Artifact tool (`action: "read"`) before assuming what's done, in progress, or next.
 
-It's a self-contained HTML page. Current state lives as JSON inside `<script id="state-data" type="application/json">`. Columns: `backlog`, `scoping`, `in-progress`, `review-qa`, `shipped`. Each card: `id`, `column`, `title`, `type` (`Founder`/`Compliance`/`Product`/`Engineering`/`Security`/`Go-to-Market`), `source` (priority `P0`/`P1`/`P2`), `date`, `note`, `order`, and optionally `pr` (a GitHub PR URL, once one exists for that card — shown as a "View PR ↗" link on the card).
+It's a self-contained HTML page. Current state lives as JSON inside `<script id="state-data" type="application/json">`. Columns: `backlog`, `scoping`, `in-progress`, `review-qa`, `shipped`. Each card: `id`, `column`, `title`, `type` (`Founder`/`Compliance`/`Product`/`Engineering`/`Security`/`Go-to-Market`), `source` (priority `P0`/`P1`/`P2`), `date`, `note`, `order`, and optionally `pr` (a GitHub PR URL, once one exists for that card — shown as a "View PR ↗" link on the card) and `ref` (any supporting-material URL — shown as a "Reference ↗" link).
 
 To publish a board update: read the artifact, edit only the field(s) that actually changed in the JSON, and republish with the Artifact tool — `action: "publish"`, the same URL, `capabilities: {"artifact": {}}`, `title: "Legal Intake Build"`, `favicon: "🛠️"`. Never touch any other card or the page's structure.
+
+**Always merge onto the live version before publishing.** A publish that isn't built on the current live version is refused and hands back a saved copy — read it, diff the card state against yours, take live as the base, re-apply only your own edits, then publish. Never use `force: true` to get past a conflict: it silently discards whatever the other side did.
 
 ## The board and the repo are kept in sync manually, in both directions
 
@@ -30,14 +32,35 @@ Any card with `type: "Founder"` is Clayton's own task — reviewing/merging PRs,
 ## Repository structure
 
 - `docs/compliance/`, `docs/product/`, `docs/architecture/`, `docs/security/`, `docs/go-to-market/` — one folder per board track. A card's real deliverable (research, spec, ADR) lands here before the card is considered started.
+- `docs/product/reference/` — anonymised real-world source material. Reference only: never shipped verbatim, never presented as the product's own content.
+- `docs/product/spec/` — the machine-readable intake flow specification. Run `validate_spec.py` after any edit to it.
+- `docs/architecture/adr/` — architecture decision records.
 - `src/` — stays empty until the "Technology stack decision (ADR)" card is done. Don't write implementation code before that decision exists and has real work behind items 1–7 below.
 
 ## Workflow rules
 
-- Work on a branch (`work/<card-id>-<short-slug>`), never push directly to `main`.
-- Open a pull request describing what you did, what sources you used, and open questions for human review. Never merge your own PR — that's Clayton's job (Founder card).
+- **Never commit directly to `main`. No exceptions, and no session is exempt.**
+  This applies to interactive sessions as much as the scheduled one, and to
+  every kind of change — documentation, reference material, README edits,
+  one-line typo fixes, throwaway probes. Work on a branch
+  (`work/<card-id>-<short-slug>`) and open a PR, always.
+
+  This is written emphatically because the softer version of the rule failed.
+  On 2026-09-04 an interactive session put five commits on `main` — reference
+  docs, an index, and a probe file — reading "never push directly to `main`"
+  as though it governed card work by the scheduled session rather than
+  documentation by a human-facing one. It doesn't. "It's only docs" is exactly
+  how `main` accumulates commits nobody reviewed.
+
+  **Nothing enforces this technically yet.** Board card `c31` (branch
+  protection) is still open, and the GitHub connector has no ruleset tools, so
+  until Clayton configures it this rule is the only thing standing between the
+  repo and unreviewed history. Treat it accordingly.
+
+- Open a pull request describing what you did, what sources you used, and open questions for human review. Never merge your own PR — that's Clayton's job (Founder card `c25`).
 - One new card of work per session. Don't sprawl across multiple cards in one sitting (the repo→board Shipped sync above doesn't count against this — that's status-checking, not new work).
 - Check `docs/` and open PRs before starting anything, so you don't duplicate work already done or in flight.
+- **The connector cannot push binary files** — it encodes content as text. Images, PDFs and similar can't be committed. Extract them to text/markdown, or keep them outside the repo.
 
 ## Dependency order
 
