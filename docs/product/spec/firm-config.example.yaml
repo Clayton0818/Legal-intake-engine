@@ -1,0 +1,217 @@
+# Example firm configuration.
+#
+# Everything a firm can legitimately differ on lives here. intake-flow.yaml is
+# the shape of the process; this file is the parameters. If a change to firm
+# behaviour requires editing intake-flow.yaml, that is a bug in this split.
+#
+# The values below are ILLUSTRATIVE — a plausible Texas family-law firm, used
+# to prove the config surface is sufficient. They are not any real firm's
+# settings, and no real firm's fees, partners or staff appear here.
+
+version: 1
+firm_id: example-firm
+
+# ---------------------------------------------------------------------------
+# What the firm does and does not take
+# ---------------------------------------------------------------------------
+
+practice_areas:
+  offered:
+    - family_divorce
+    - family_custody
+    - family_modification
+    - family_enforcement
+    - family_other
+    - expunction
+    - mediation
+  referred_out:
+    - personal_injury
+
+not_served_practice_areas: []
+
+not_served_conditions:
+  - id: limited_scope_only
+    description: Drafting or filling in documents without representation.
+  - id: opposing_party_is_child_protection_agency
+    description: Matters where the opposing party is a state child-protection agency.
+
+supported_modification_subjects:
+  - custody
+  - visitation
+  - child_support
+  - spousal_maintenance
+
+# ---------------------------------------------------------------------------
+# Jurisdiction — per practice area, never one firm-wide list
+# ---------------------------------------------------------------------------
+
+jurisdiction_by_practice_area:
+  family_divorce:      &county_limited
+    mode: county_list
+    state: TX
+    counties: [CountyA, CountyB, CountyC, CountyD, CountyE, CountyF, CountyG, CountyH, CountyI]
+  family_custody:      *county_limited
+  family_modification: *county_limited
+  family_enforcement:  *county_limited
+  family_other:        *county_limited
+  mediation:           *county_limited
+  expunction:
+    mode: statewide
+    state: TX
+  personal_injury:
+    mode: statewide
+    state: TX
+
+# ---------------------------------------------------------------------------
+# Eligibility thresholds
+# ---------------------------------------------------------------------------
+
+residency_period_months: 6
+minimum_order_age_months: 12
+
+# ---------------------------------------------------------------------------
+# Conflicts
+# ---------------------------------------------------------------------------
+
+conflict_sources:
+  - clients
+  - matters
+  - prior_consultations      # a prior consult is a conflict even without engagement
+
+role_matrix:
+  # Which prior contacts bar which future roles.
+  representation:
+    barred_by: [prior_representation_of_opposing_party, prior_consultation_with_opposing_party]
+  mediation:
+    barred_by:
+      - prior_initial_meeting_with_either_party
+      - prior_representation_of_either_party
+      - prior_consultation_with_either_party
+
+conflict_review_sla_hours: 4
+
+# ---------------------------------------------------------------------------
+# Urgency
+# ---------------------------------------------------------------------------
+
+minimum_hearing_window_days: 14      # hearing sooner than this diverts to human review
+urgent_capacity_sla_hours: 2
+
+# ---------------------------------------------------------------------------
+# Meetings and money
+# ---------------------------------------------------------------------------
+
+always_paid_consult_matter_types:
+  - family_modification
+  - family_enforcement
+  - prenuptial_agreement
+  - postnuptial_agreement
+  - name_change
+  - adoption
+
+meetings:
+  initial_meeting:
+    duration_minutes: 45
+    fee: 0
+    staff_role: client_engagement_specialist
+    legal_advice_permitted: false     # this is what makes it free; see UPL review (c1)
+  paid_consult:
+    duration_minutes: 30
+    fee: { amount: 100, currency: USD }
+    staff_role: attorney
+    legal_advice_permitted: true
+
+booking:
+  same_day_minimum_lead_hours: 2
+  payment_required_before_confirmation: true
+  cash_accepted_in_person: true
+  self_scheduling_fallback_enabled: true
+  grace_period_minutes: 15
+  payment_hold_hours: 24
+  channels_offered: [phone, video, in_person]
+
+cancellation:
+  refund_on_client_cancellation_before_consult: true
+  refund_on_no_show: false
+  refund_on_firm_error: true
+
+# ---------------------------------------------------------------------------
+# Referral routing — practice area x geography -> destination
+# ---------------------------------------------------------------------------
+
+referral_table:
+  - practice_area: personal_injury
+    region: metro_a
+    destination: partner_firm_a
+  - practice_area: personal_injury
+    region: metro_b
+    destination: partner_firm_b
+  - practice_area: "*"
+    region: "*"
+    destination: state_bar_referral_service   # fallback, also used after a definite conflict
+
+# ---------------------------------------------------------------------------
+# Language
+# ---------------------------------------------------------------------------
+
+languages:
+  supported: [en, es]
+  staff_by_language:
+    en: [any]
+    es: [spanish_speaking_team]
+  overflow_service:
+    enabled: true
+    used_when: no_language_matched_staff_available
+    completes_intake: true
+
+# ---------------------------------------------------------------------------
+# Follow-up cadences — days after each attempt
+# ---------------------------------------------------------------------------
+
+cadence_by_practice_area:
+  expunction:      [1, 2, 5, 5, 7]     # last entry = non-engagement message
+  family_divorce:  [1, 2, 7, 7, 7]
+  family_custody:  [1, 2, 7, 7, 7]
+  default:         [1, 2, 7, 7, 7]
+
+non_engagement_message: template:non_engagement
+
+review_sla_hours: 24
+
+# ---------------------------------------------------------------------------
+# Systems this firm runs — drives the integration layer (c5)
+# ---------------------------------------------------------------------------
+
+systems:
+  intake_crm:
+    role: lead capture, automation sequences, email templates, engagement agreements
+    is_system_of_record_for: [lead, matter_stage, engagement_agreement]
+  client_portal:
+    role: client messaging, intake forms, invoices, calendar
+    is_system_of_record_for: [client_communications, invoices]
+  scheduling:
+    role: appointment booking
+  overflow_reception:
+    role: after-hours and language overflow
+
+crm_field_map:
+  # Every terminal state maps to a defined set of writes. This mapping is
+  # configuration, not code.
+  did_not_schedule:
+    matter_stage: did_not_schedule
+    status: prospective_client
+    practice_area: required
+  referred_out:
+    matter_stage: did_not_hire_referred_out
+    referral_destination: required
+  declined_conflict:
+    matter_stage: declined_conflict
+  scheduled_initial_meeting:
+    matter_stage: consultation_scheduled
+  scheduled_paid_consult:
+    matter_stage: consultation_scheduled
+  pending_internal_review:
+    matter_stage: pending_review
+  manual_follow_up:
+    matter_stage: consult_completed_manual_follow_up
+    suppresses_automation: true

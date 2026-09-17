@@ -1,0 +1,557 @@
+# Intake flow — the decision graph.
+#
+# Nodes reference field ids from question-bank.yaml. Every `next`, `then`,
+# `else` and `goto` must name a node id or a terminal id; validate_spec.py
+# enforces this.
+#
+# Anything a firm can legitimately differ on lives in firm-config, not here.
+# This file is the shape of the process; firm-config is the parameters.
+
+version: 1
+entry: classify_caller
+
+# ---------------------------------------------------------------------------
+# Terminal states
+# ---------------------------------------------------------------------------
+# Every path ends in exactly one of these. They are not interchangeable —
+# each implies different follow-up, different CRM writes, and different
+# reporting.
+
+terminals:
+
+  scheduled_initial_meeting:
+    description: Free, non-advice meeting booked with a client engagement specialist.
+    crm_writes: [matter_stage, practice_area, appointment]
+    follow_up: none
+
+  scheduled_paid_consult:
+    description: Paid attorney consultation booked and paid for.
+    crm_writes: [matter_stage, practice_area, appointment, payment]
+    follow_up: none
+
+  pending_payment:
+    description: >
+      Paid consult selected but not yet paid. Not a confirmed appointment.
+      Expires after firm-configured window, then falls to did_not_schedule.
+    crm_writes: [matter_stage, practice_area]
+    follow_up: payment_reminder
+    expires: true
+
+  pending_internal_review:
+    description: >
+      Intake complete, but eligibility needs staff research and a qualified
+      human decision before anything is promised. The caller is told they will
+      be contacted; that promise must be tracked to closure.
+    crm_writes: [matter_stage, practice_area, review_task]
+    follow_up: internal_sla
+    requires_human: true
+
+  referred_out:
+    description: >
+      Matter is real but not one this firm takes. Full intake is still
+      gathered and handed to an external destination chosen by rules.
+    crm_writes: [matter_stage, practice_area, referral_destination]
+    follow_up: none
+
+  declined_conflict:
+    description: >
+      A definite conflict of interest. Do not schedule. Caller is given a
+      neutral referral route (e.g. a bar referral service).
+    crm_writes: [matter_stage, conflict_flag]
+    follow_up: none
+
+  not_eligible:
+    description: >
+      Fails a statutory or structural requirement (residency, order age).
+      Distinct from declined — nothing is wrong with the firm's ability to
+      act, the matter itself does not qualify.
+    crm_writes: [matter_stage, practice_area]
+    follow_up: none
+
+  out_of_scope:
+    description: >
+      A service the firm does not offer at all (limited-scope document work,
+      matters against a child-protection agency). Distinct from not_eligible
+      and from referred_out — there may be no referral destination.
+    crm_writes: [matter_stage, practice_area]
+    follow_up: none
+
+  did_not_schedule:
+    description: >
+      Information gathered, no appointment booked. Enters the follow-up
+      cadence for its practice area.
+    crm_writes: [matter_stage, status, practice_area]
+    follow_up: cadence
+
+  abandoned:
+    description: Caller disengaged before intake could complete.
+    crm_writes: [matter_stage]
+    follow_up: cadence
+
+# ---------------------------------------------------------------------------
+# Node types
+# ---------------------------------------------------------------------------
+
+node_types:
+  capture:        Ask for one or more fields and store them.
+  classify:       Resolve a field by asking and/or inference.
+  gate:           Evaluate a rule; pass through or divert to a terminal.
+  conflict_check: Run the conflict engine; three-way result.
+  branch:         Route on a condition without capturing anything.
+  research_task:  Hand to staff for offline work; flow pauses.
+  escalate:       Open a human task with an SLA; may suspend scheduling.
+  schedule:       Select meeting type and book, subject to booking policy.
+  handoff:        Emit the structured summary to the assignee and the CRM.
+
+# ---------------------------------------------------------------------------
+# Nodes
+# ---------------------------------------------------------------------------
+
+nodes:
+
+  classify_caller:
+    type: classify
+    fields: [caller_type]
+    branches:
+      - when: "caller_type == 'potential_new_client'"
+        goto: capture_contact
+      - when: "caller_type in ['existing_client','former_client']"
+        goto: existing_caller_handoff
+      - when: "caller_type == 'opposing_party'"
+        goto: declined_conflict
+    default: existing_caller_handoff
+
+  existing_caller_handoff:
+    type: handoff
+    description: >
+      Not intake. Routed to the assigned legal team, or to a new-matter path
+      for a former client seeking help with a new issue. Out of scope for
+      this spec beyond the routing itself.
+    next: did_not_schedule
+
+  capture_contact:
+    type: capture
+    fields: [full_name, name_spelling_confirmed, email, phone, referral_source, language]
+    next: language_routing
+
+  language_routing:
+    type: branch
+    description: >
+      Language is a routing dimension, not a translation setting. If no
+      language-matched staff member is available, intake is handed to the
+      overflow service and returned completed.
+    branches:
+      - when: "language == 'en'"
+        goto: classify_practice_area
+    default: classify_practice_area
+    side_effects:
+      - assign_language_matched_staff
+      - fallback_to_overflow_service_if_unavailable
+
+  classify_practice_area:
+    type: classify
+    fields: [practice_area, county]
+    description: >
+      Must precede the jurisdiction gate — jurisdiction rules are per practice
+      area. A confirmed classification is read back to the caller.
+    next: out_of_scope_gate
+
+  out_of_scope_gate:
+    type: gate
+    rule: out_of_scope_rules
+    on_fail: out_of_scope
+    next: jurisdiction_gate
+
+  jurisdiction_gate:
+    type: gate
+    rule: jurisdiction_rules
+    on_fail: referral_router
+    next: capture_opposing_party
+
+  capture_opposing_party:
+    type: capture
+    fields: [opposing_party_name]
+    skip_when: "practice_area == 'expunction'"
+    next: conflict_check
+
+  conflict_check:
+    type: conflict_check
+    description: >
+      Checks both the caller and the opposing party against client records AND
+      prior-consultation records, evaluated against the role being sought.
+      Three-way outcome — see conflict_rules.
+    outcomes:
+      clear: practice_area_router
+      possible: escalate_conflict
+      definite: declined_conflict
+
+  escalate_conflict:
+    type: escalate
+    description: >
+      Possible conflict. Intake pauses, the caller is told research is needed
+      and offered a callback slot, and an attorney decides. Never resolved by
+      the engine.
+    sla: conflict_review_sla
+    requires_human: true
+    next: pending_internal_review
+
+  practice_area_router:
+    type: branch
+    branches:
+      - when: "practice_area == 'family_divorce'"
+        goto: q_divorce
+      - when: "practice_area == 'family_custody'"
+        goto: q_custody
+      - when: "practice_area in ['family_modification','family_enforcement','family_other']"
+        goto: q_existing_order
+      - when: "practice_area == 'expunction'"
+        goto: q_expunction
+      - when: "practice_area == 'personal_injury'"
+        goto: q_personal_injury
+      - when: "practice_area == 'mediation'"
+        goto: q_mediation
+    default: q_existing_order
+
+  # ---- family law branches ------------------------------------------------
+
+  q_divorce:
+    type: capture
+    fields:
+      - marriage_year
+      - residency_6mo
+      - case_pending
+      - cause_number
+      - opposing_counsel
+      - hearing_date
+      - hearing_type
+      - has_minor_children
+      - children_ages
+    conditional_fields:
+      cause_number: "case_pending == true"
+      opposing_counsel: "case_pending == true"
+      hearing_date: "case_pending == true"
+      hearing_type: "case_pending == true"
+      children_ages: "has_minor_children == true"
+    disqualify:
+      - rule: residency_requirement
+    next: urgency_gate
+
+  q_custody:
+    type: capture
+    fields: [children_ages, children_reside_with, children_residency_6mo, case_pending, hearing_date]
+    conditional_fields:
+      hearing_date: "case_pending == true"
+    disqualify:
+      - rule: child_residency_requirement
+    next: urgency_gate
+
+  q_existing_order:
+    type: capture
+    fields: [existing_order, order_intent, case_pending, hearing_date]
+    conditional_fields:
+      hearing_date: "case_pending == true"
+    branches:
+      - when: "order_intent == 'modify'"
+        goto: q_modification
+      - when: "order_intent == 'enforce'"
+        goto: q_enforcement
+    default: urgency_gate
+
+  q_modification:
+    type: capture
+    fields: [modification_subject, order_age_min]
+    disqualify:
+      - rule: modification_subject_supported
+      - rule: order_age_requirement
+    next: urgency_gate
+
+  q_enforcement:
+    type: capture
+    fields: [enforcement_in_order]
+    disqualify:
+      - rule: enforcement_stated_in_order
+    next: urgency_gate
+
+  # ---- expunction ---------------------------------------------------------
+
+  q_expunction:
+    type: capture
+    fields:
+      - date_of_birth
+      - criminal_case_number
+      - charges
+      - arrest_location
+      - case_disposition
+      - deferred_or_probation
+      - other_convictions
+    next: expunction_research
+
+  expunction_research:
+    type: research_task
+    description: >
+      Staff look the case up in the public judicial record to establish how it
+      was disposed of, then send it to a managing attorney for an eligibility
+      decision. Nothing is promised to the caller on the call.
+    assignee_role: intake_staff
+    then_review_role: managing_attorney
+    sla: eligibility_review_sla
+    next: pending_internal_review
+
+  # ---- personal injury ----------------------------------------------------
+
+  q_personal_injury:
+    type: capture
+    fields:
+      - injured_party
+      - pi_case_type
+      - incident_date
+      - incident_location
+      - injuries
+      - medical_records_available
+      - witnesses
+      - insurer_contacted
+      - insurer_result
+    conditional_fields:
+      insurer_result: "insurer_contacted == true"
+    next: referral_router
+
+  # ---- mediation ----------------------------------------------------------
+
+  q_mediation:
+    type: capture
+    fields:
+      - case_pending
+      - cause_number
+      - county
+      - opposing_party_name
+      - pnc_has_attorney
+      - op_has_attorney
+      - mediation_duration
+    conditional_fields:
+      cause_number: "case_pending == true"
+    disqualify:
+      - rule: mediation_prior_contact
+    next: mediation_scheduling
+
+  mediation_scheduling:
+    type: schedule
+    description: >
+      Mediation booking is coordinated against the mediator's calendar, with
+      candidate dates offered to both sides and payment taken before the slot
+      is held. It does not use the standard meeting-type rules.
+    meeting_type_override: paid_consult
+    requires_payment: true
+    next: handoff
+
+  # ---- shared tail --------------------------------------------------------
+
+  urgency_gate:
+    type: gate
+    rule: urgency_rules
+    on_fail: escalate_urgency
+    next: select_meeting_type
+
+  escalate_urgency:
+    type: escalate
+    description: >
+      A hearing is imminent. Do NOT schedule normally. Capture what prompted
+      the caller to seek counsel now and whether they can fund a retainer
+      immediately, then route to a senior attorney for a capacity decision,
+      with a callback commitment.
+    sla: urgent_capacity_sla
+    requires_human: true
+    suppresses_scheduling: true
+    next: pending_internal_review
+
+  select_meeting_type:
+    type: branch
+    rule: meeting_type_rules
+    writes: [meeting_type]
+    next: booking
+
+  booking:
+    type: schedule
+    description: >
+      Booking is a policy step, not a calendar lookup. Lead time, payment
+      state, channel preference and staff calendars all constrain it.
+    rule: booking_rules
+    fields: [meeting_channel]
+    branches:
+      - when: "meeting_type == 'paid_consult' and payment_state == 'pending'"
+        goto: pending_payment
+      - when: "meeting_type == 'paid_consult'"
+        goto: handoff
+      - when: "meeting_type == 'initial_meeting'"
+        goto: handoff
+    default: did_not_schedule
+    on_decline: did_not_schedule
+
+  handoff:
+    type: handoff
+    description: >
+      Structured summary to the assigned attorney or specialist, and the full
+      matter record written to the CRM. Ordering matters: the record is
+      written BEFORE the appointment is treated as booked.
+    payload:
+      - full_name
+      - meeting_type
+      - meeting_channel
+      - phone
+      - email
+      - practice_area
+      - summary
+    ordering: crm_write_before_booking_confirmation
+    branches:
+      - when: "meeting_type == 'paid_consult'"
+        goto: scheduled_paid_consult
+    default: scheduled_initial_meeting
+
+  referral_router:
+    type: branch
+    description: >
+      Chooses an external destination from a firm-configured rules table
+      (practice area x geography -> destination) and hands over the gathered
+      intake.
+    rule: referral_rules
+    writes: [referral_destination]
+    next: referred_out
+
+# ---------------------------------------------------------------------------
+# Rules
+# ---------------------------------------------------------------------------
+# Rules are named here and parameterised in firm-config. The engine owns the
+# rule's shape; the firm owns its values.
+
+rules:
+
+  out_of_scope_rules:
+    description: Services the firm does not offer at all.
+    parameters: [not_served_practice_areas, not_served_conditions]
+    evaluates_to: pass_or_fail
+
+  jurisdiction_rules:
+    description: >
+      Per practice area. Some areas are limited to a county list; others are
+      accepted statewide. Never a single firm-wide list.
+    parameters: [jurisdiction_by_practice_area]
+    evaluates_to: pass_or_fail
+
+  conflict_rules:
+    description: >
+      Tri-state and role-sensitive. Checks caller and opposing party against
+      client records and prior-consultation records, evaluated against the
+      role being sought. Prior contact that is harmless for representation can
+      still bar the firm from acting as mediator.
+    parameters: [conflict_sources, role_matrix]
+    evaluates_to: clear_possible_definite
+
+  urgency_rules:
+    description: >
+      Fails when a hearing falls inside the firm's minimum window, diverting
+      to human capacity review rather than booking.
+    parameters: [minimum_hearing_window_days]
+    evaluates_to: pass_or_fail
+
+  meeting_type_rules:
+    description: >
+      Two inputs: matter type and whether legal advice is being requested.
+      Certain matter types always route to a paid attorney consultation
+      regardless of what the caller asks for.
+    parameters: [always_paid_consult_matter_types]
+    evaluates_to: initial_meeting_or_paid_consult
+
+  booking_rules:
+    description: >
+      Same-day lead time, payment-before-confirmation, channel preference,
+      calendar availability, self-scheduling fallback.
+    parameters:
+      - same_day_minimum_lead_hours
+      - payment_required_before_confirmation
+      - cash_accepted_in_person
+      - self_scheduling_fallback_enabled
+      - grace_period_minutes
+    evaluates_to: booked_pending_or_declined
+
+  referral_rules:
+    description: Practice area x geography -> external destination.
+    parameters: [referral_table]
+    evaluates_to: destination
+
+  # -- disqualifiers -------------------------------------------------------
+  # Each fails to not_eligible. They are separate rules because firms and
+  # jurisdictions differ on the thresholds.
+
+  residency_requirement:
+    field: residency_6mo
+    fails_when: "residency_6mo == false"
+    on_fail: not_eligible
+    parameters: [residency_period_months]
+
+  child_residency_requirement:
+    field: children_residency_6mo
+    fails_when: "children_residency_6mo == false"
+    on_fail: not_eligible
+    parameters: [residency_period_months]
+
+  modification_subject_supported:
+    field: modification_subject
+    fails_when: "modification_subject not in supported_modification_subjects"
+    on_fail: out_of_scope
+    parameters: [supported_modification_subjects]
+
+  order_age_requirement:
+    field: order_age_min
+    fails_when: "order_age_min == false"
+    on_fail: not_eligible
+    parameters: [minimum_order_age_months]
+
+  enforcement_stated_in_order:
+    field: enforcement_in_order
+    fails_when: "enforcement_in_order == false"
+    on_fail: not_eligible
+
+  mediation_prior_contact:
+    description: >
+      If either party previously had an initial meeting with the firm, it
+      cannot mediate between them.
+    fails_when: "prior_initial_meeting(caller) or prior_initial_meeting(opposing_party)"
+    on_fail: declined_conflict
+
+# ---------------------------------------------------------------------------
+# Follow-up
+# ---------------------------------------------------------------------------
+
+follow_up:
+
+  cadence:
+    description: >
+      Automated sequence for did_not_schedule. Intervals differ per practice
+      area; simpler matters are chased faster. Ends in a non-engagement
+      message.
+    parameters: [cadence_by_practice_area, non_engagement_message]
+    manual_override:
+      description: >
+        When a human takes ownership, or the caller names their own follow-up
+        date, the record leaves automation entirely. The engine must never
+        keep chasing someone a person has picked up.
+      suppresses_automation: true
+
+  payment_reminder:
+    description: Reminder while a paid consult sits unpaid, until the hold expires.
+    parameters: [payment_hold_hours]
+
+  internal_sla:
+    description: >
+      Tracks a promise made to a caller ("we will get back to you") through to
+      an actual answer. Breaching this is worse than declining up front.
+    parameters: [review_sla_hours]
+
+  conflict_review_sla:
+    parameters: [review_sla_hours]
+
+  eligibility_review_sla:
+    parameters: [review_sla_hours]
+
+  urgent_capacity_sla:
+    description: Fastest SLA in the system — a hearing is imminent.
+    parameters: [review_sla_hours]

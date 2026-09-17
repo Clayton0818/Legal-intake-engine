@@ -1,0 +1,425 @@
+# Question bank — the field catalogue for legal intake.
+#
+# This is data, not copy. Each entry says WHAT fact to capture and how to
+# validate it. The words used to ask are a separate concern (see README:
+# "Wording is not in this spec").
+#
+# Field ids are stable and referenced by intake-flow.yaml. Renaming one is a
+# breaking change.
+#
+# pii: none | contact | sensitive | privileged
+#   contact    - identifying but routine (name, email, phone)
+#   sensitive  - special handling under a retention policy (DOB, charges, health)
+#   privileged - potentially attorney-client privileged; never used in logs,
+#                analytics, or model training. See card c2.
+
+version: 1
+
+types:
+  # Declared here so the validator can check field.type values.
+  - string
+  - text            # free-form, long
+  - email
+  - phone
+  - date
+  - year
+  - integer
+  - boolean
+  - enum
+  - enum_multi
+  - person_name
+  - money
+
+fields:
+
+  # ---- caller identity and routing -------------------------------------
+
+  caller_type:
+    label: Relationship to the firm
+    type: enum
+    values: [existing_client, former_client, potential_new_client, opposing_party, other]
+    required: true
+    pii: none
+    notes: >
+      First branch of the whole process. Only potential_new_client continues
+      into intake proper; the others route to their own handling.
+
+  full_name:
+    label: Caller's full name
+    type: person_name
+    required: true
+    pii: contact
+
+  name_spelling_confirmed:
+    label: Spelling confirmed with caller
+    type: boolean
+    default: false
+    pii: none
+    notes: The source SOP explicitly confirms spelling; misspelled names break conflict checks.
+
+  email:
+    label: Email address
+    type: email
+    required: true
+    pii: contact
+
+  phone:
+    label: Best callback number
+    type: phone
+    required: true
+    pii: contact
+    notes: Captured early and deliberately — used if the call drops mid-intake.
+
+  language:
+    label: Preferred language
+    type: enum
+    values: [en, es, other]
+    default: en
+    pii: none
+    notes: Routing dimension. Drives staff matching, not just translation.
+
+  referral_source:
+    label: How the caller heard about the firm
+    type: string
+    required: false
+    pii: none
+    notes: Marketing attribution. Not used in any routing decision.
+
+  # ---- matter classification -------------------------------------------
+
+  practice_area:
+    label: Practice area
+    type: enum
+    values:
+      - family_divorce
+      - family_custody
+      - family_modification
+      - family_enforcement
+      - family_other
+      - expunction
+      - personal_injury
+      - mediation
+      - unknown
+    required: true
+    pii: none
+    notes: >
+      Must be resolved before the jurisdiction gate — jurisdiction rules are
+      per practice area, not per firm.
+
+  county:
+    label: County the matter is in
+    type: string
+    required: true
+    pii: none
+
+  opposing_party_name:
+    label: Opposing party's name
+    type: person_name
+    required: false
+    pii: contact
+    notes: >
+      Required for the conflict check wherever an opposing party exists.
+      Not applicable to expunction.
+
+  legal_advice_requested:
+    label: Caller is asking for legal advice
+    type: boolean
+    default: false
+    pii: none
+    notes: One of two inputs to meeting-type selection; the other is matter type.
+
+  # ---- shared litigation posture ---------------------------------------
+
+  case_pending:
+    label: Case already pending in court
+    type: boolean
+    required: false
+    pii: none
+
+  cause_number:
+    label: Cause number
+    type: string
+    required: false
+    pii: sensitive
+
+  opposing_counsel:
+    label: Opposing counsel
+    type: string
+    required: false
+    pii: none
+
+  hearing_date:
+    label: Next court hearing date
+    type: date
+    required: false
+    pii: sensitive
+    notes: Drives the urgency gate. Null means "none scheduled", not "unknown".
+
+  hearing_type:
+    label: Type of hearing set
+    type: string
+    required: false
+    pii: sensitive
+
+  # ---- divorce ----------------------------------------------------------
+
+  marriage_year:
+    label: Year of marriage
+    type: year
+    required: false
+    pii: sensitive
+
+  residency_6mo:
+    label: Caller or spouse resident in the state for the qualifying period
+    type: boolean
+    required: false
+    pii: none
+    notes: >
+      Statutory residency requirement. A false answer disqualifies outright —
+      see disqualify_rules in intake-flow.yaml. The qualifying period is
+      firm/jurisdiction config, not hardcoded.
+
+  has_minor_children:
+    label: Minor children involved
+    type: boolean
+    required: false
+    pii: sensitive
+
+  children_ages:
+    label: Ages of the children
+    type: string
+    required: false
+    pii: sensitive
+    notes: Free text — callers answer "6 and 9", not a structured list.
+
+  # ---- custody ----------------------------------------------------------
+
+  children_reside_with:
+    label: Who the children currently live with
+    type: string
+    required: false
+    pii: sensitive
+
+  children_residency_6mo:
+    label: Children resident in the state for the qualifying period
+    type: boolean
+    required: false
+    pii: none
+
+  # ---- existing orders: modification and enforcement ---------------------
+
+  existing_order:
+    label: An existing court order is in place
+    type: boolean
+    required: false
+    pii: none
+
+  order_intent:
+    label: Caller wants to modify or enforce the order
+    type: enum
+    values: [modify, enforce, unsure]
+    required: false
+    pii: none
+
+  modification_subject:
+    label: What the caller wants to modify
+    type: enum
+    values: [custody, visitation, child_support, spousal_maintenance, property, other]
+    required: false
+    pii: sensitive
+    notes: >
+      Some values are out of scope for the reference firm — which ones is firm
+      config, not a property of the field.
+
+  order_age_min:
+    label: Order has been in place for the minimum qualifying period
+    type: boolean
+    required: false
+    pii: none
+
+  enforcement_in_order:
+    label: The thing to be enforced is actually stated in the order
+    type: boolean
+    required: false
+    pii: none
+    notes: A false answer is a strong signal the matter is not enforceable as framed.
+
+  # ---- expunction --------------------------------------------------------
+
+  date_of_birth:
+    label: Date of birth
+    type: date
+    required: false
+    pii: sensitive
+
+  criminal_case_number:
+    label: Criminal case number
+    type: string
+    required: false
+    pii: sensitive
+
+  charges:
+    label: Charges
+    type: text
+    required: false
+    pii: sensitive
+
+  arrest_location:
+    label: Where the arrest occurred
+    type: string
+    required: false
+    pii: sensitive
+
+  case_disposition:
+    label: How the case was disposed of
+    type: text
+    required: false
+    pii: sensitive
+
+  deferred_or_probation:
+    label: Placed on deferred adjudication or probation
+    type: enum
+    values: [deferred_adjudication, probation, neither, unknown]
+    required: false
+    pii: sensitive
+
+  other_convictions:
+    label: Other arrests or convictions
+    type: text
+    required: false
+    pii: sensitive
+
+  # ---- personal injury ---------------------------------------------------
+
+  injured_party:
+    label: Name of the injured party
+    type: person_name
+    required: false
+    pii: sensitive
+
+  pi_case_type:
+    label: Type of injury case
+    type: enum
+    values: [motor_vehicle, premises_liability, other]
+    required: false
+    pii: none
+
+  incident_date:
+    label: Date of the incident
+    type: date
+    required: false
+    pii: sensitive
+
+  incident_location:
+    label: Where the incident occurred
+    type: string
+    required: false
+    pii: sensitive
+
+  injuries:
+    label: Injuries sustained
+    type: text
+    required: false
+    pii: sensitive
+
+  medical_records_available:
+    label: Medical records concerning treatment exist
+    type: boolean
+    required: false
+    pii: sensitive
+
+  witnesses:
+    label: Witnesses
+    type: text
+    required: false
+    pii: sensitive
+
+  insurer_contacted:
+    label: Other party's insurer has been contacted
+    type: boolean
+    required: false
+    pii: sensitive
+
+  insurer_result:
+    label: Result of contact with the insurer
+    type: text
+    required: false
+    pii: sensitive
+
+  # ---- mediation ---------------------------------------------------------
+
+  pnc_has_attorney:
+    label: Caller already has an attorney
+    type: boolean
+    required: false
+    pii: none
+
+  op_has_attorney:
+    label: Opposing party has an attorney
+    type: boolean
+    required: false
+    pii: none
+
+  mediation_duration:
+    label: Full or half day mediation
+    type: enum
+    values: [full_day, half_day, unsure]
+    required: false
+    pii: none
+
+  # ---- scheduling and payment -------------------------------------------
+
+  meeting_type:
+    label: Meeting type selected by the flow
+    type: enum
+    values: [initial_meeting, paid_consult]
+    required: false
+    pii: none
+    derived: true
+    notes: Output of meeting_type_rules, never asked directly.
+
+  meeting_channel:
+    label: Preferred channel
+    type: enum
+    values: [phone, video, in_person]
+    default: video
+    pii: none
+    notes: Callers may opt out of video for a phone call.
+
+  payment_state:
+    label: Payment state for a paid consultation
+    type: enum
+    values: [not_required, pending, confirmed, cash_at_meeting]
+    default: not_required
+    pii: none
+    derived: true
+    notes: >
+      A paid consult is not confirmed until this is confirmed or
+      cash_at_meeting. See the pending_payment terminal state.
+
+  # ---- disposition -------------------------------------------------------
+
+  outcome:
+    label: Terminal state reached
+    type: enum
+    values:
+      - scheduled_initial_meeting
+      - scheduled_paid_consult
+      - pending_payment
+      - pending_internal_review
+      - referred_out
+      - declined_conflict
+      - not_eligible
+      - out_of_scope
+      - did_not_schedule
+      - abandoned
+    required: false
+    pii: none
+    derived: true
+
+  referral_destination:
+    label: Where a referred-out matter was sent
+    type: string
+    required: false
+    pii: none
+    derived: true
