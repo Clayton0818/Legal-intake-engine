@@ -26,3 +26,12 @@ venv/
 
 # Logs
 *.log
+
+# Next.js
+.next/
+
+# package-lock.json is deliberately not committed in this first scaffold PR —
+# it's ~5,500 auto-generated lines with no reviewable content, and CI/Render
+# both run `npm install` (not `npm ci`) accordingly. Revisit if reproducible
+# installs become worth the diff noise (e.g. once a real team reviews PRs).
+package-lock.json

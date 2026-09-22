@@ -1,0 +1,294 @@
+{
+  "id": "ec2d2d2e-dedb-4afe-8daf-7fd0b7212bae",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.conflict_check_results": {
+      "name": "conflict_check_results",
+      "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "intake_session_id": { "name": "intake_session_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "role_sought": { "name": "role_sought", "type": "text", "primaryKey": false, "notNull": true },
+        "outcome": { "name": "outcome", "type": "conflict_outcome", "typeSchema": "public", "primaryKey": false, "notNull": true },
+        "matched_party_ids": { "name": "matched_party_ids", "type": "uuid[]", "primaryKey": false, "notNull": true, "default": "'{}'::uuid[]" },
+        "matched_sources": { "name": "matched_sources", "type": "jsonb", "primaryKey": false, "notNull": true },
+        "firm_config_version_id": { "name": "firm_config_version_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "resolved_by_user_id": { "name": "resolved_by_user_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "resolved_at": { "name": "resolved_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "conflict_check_results_tenant_id_firms_id_fk": { "name": "conflict_check_results_tenant_id_firms_id_fk", "tableFrom": "conflict_check_results", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "conflict_check_results_intake_session_id_intake_sessions_id_fk": { "name": "conflict_check_results_intake_session_id_intake_sessions_id_fk", "tableFrom": "conflict_check_results", "tableTo": "intake_sessions", "columnsFrom": ["intake_session_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "conflict_check_results_firm_config_version_id_firm_config_versions_id_fk": { "name": "conflict_check_results_firm_config_version_id_firm_config_versions_id_fk", "tableFrom": "conflict_check_results", "tableTo": "firm_config_versions", "columnsFrom": ["firm_config_version_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "conflict_check_results_resolved_by_user_id_users_id_fk": { "name": "conflict_check_results_resolved_by_user_id_users_id_fk", "tableFrom": "conflict_check_results", "tableTo": "users", "columnsFrom": ["resolved_by_user_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.documents": {
+      "name": "documents", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "matter_id": { "name": "matter_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "document_type": { "name": "document_type", "type": "text", "primaryKey": false, "notNull": true },
+        "storage_key": { "name": "storage_key", "type": "text", "primaryKey": false, "notNull": true },
+        "sensitivity_tier": { "name": "sensitivity_tier", "type": "sensitivity_tier", "typeSchema": "public", "primaryKey": false, "notNull": true, "default": "'standard'" },
+        "uploaded_by_user_id": { "name": "uploaded_by_user_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "documents_tenant_id_firms_id_fk": { "name": "documents_tenant_id_firms_id_fk", "tableFrom": "documents", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "documents_matter_id_matters_id_fk": { "name": "documents_matter_id_matters_id_fk", "tableFrom": "documents", "tableTo": "matters", "columnsFrom": ["matter_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "documents_uploaded_by_user_id_users_id_fk": { "name": "documents_uploaded_by_user_id_users_id_fk", "tableFrom": "documents", "tableTo": "users", "columnsFrom": ["uploaded_by_user_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.firm_config_versions": {
+      "name": "firm_config_versions", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "version": { "name": "version", "type": "integer", "primaryKey": false, "notNull": true },
+        "config": { "name": "config", "type": "jsonb", "primaryKey": false, "notNull": true },
+        "effective_from": { "name": "effective_from", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" },
+        "created_by": { "name": "created_by", "type": "uuid", "primaryKey": false, "notNull": false }
+      },
+      "indexes": {
+        "firm_config_versions_tenant_effective_idx": { "name": "firm_config_versions_tenant_effective_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "effective_from", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "firm_config_versions_tenant_id_firms_id_fk": { "name": "firm_config_versions_tenant_id_firms_id_fk", "tableFrom": "firm_config_versions", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "firm_config_versions_created_by_users_id_fk": { "name": "firm_config_versions_created_by_users_id_fk", "tableFrom": "firm_config_versions", "tableTo": "users", "columnsFrom": ["created_by"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": { "firm_config_versions_tenant_version_key": { "name": "firm_config_versions_tenant_version_key", "nullsNotDistinct": false, "columns": ["tenant_id", "version"] } },
+      "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.firms": {
+      "name": "firms", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "name": { "name": "name", "type": "text", "primaryKey": false, "notNull": true },
+        "slug": { "name": "slug", "type": "text", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "default": "'trial'" },
+        "is_production": { "name": "is_production", "type": "boolean", "primaryKey": false, "notNull": true, "default": false },
+        "data_region": { "name": "data_region", "type": "text", "primaryKey": false, "notNull": true, "default": "'us'" },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {},
+      "uniqueConstraints": { "firms_slug_unique": { "name": "firms_slug_unique", "nullsNotDistinct": false, "columns": ["slug"] } },
+      "policies": {},
+      "checkConstraints": { "firms_status_check": { "name": "firms_status_check", "value": "\"firms\".\"status\" in ('trial','active','suspended','offboarded')" } },
+      "isRLSEnabled": false
+    },
+    "public.intake_events": {
+      "name": "intake_events", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "intake_session_id": { "name": "intake_session_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "matter_id": { "name": "matter_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "event_type": { "name": "event_type", "type": "text", "primaryKey": false, "notNull": true },
+        "rule_name": { "name": "rule_name", "type": "text", "primaryKey": false, "notNull": false },
+        "actor_type": { "name": "actor_type", "type": "text", "primaryKey": false, "notNull": true },
+        "actor_id": { "name": "actor_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "payload": { "name": "payload", "type": "jsonb", "primaryKey": false, "notNull": true },
+        "firm_config_version_id": { "name": "firm_config_version_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "occurred_at": { "name": "occurred_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {
+        "intake_events_session_idx": { "name": "intake_events_session_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "intake_session_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "occurred_at", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} },
+        "intake_events_matter_idx": { "name": "intake_events_matter_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "matter_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "occurred_at", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "intake_events_tenant_id_firms_id_fk": { "name": "intake_events_tenant_id_firms_id_fk", "tableFrom": "intake_events", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "intake_events_intake_session_id_intake_sessions_id_fk": { "name": "intake_events_intake_session_id_intake_sessions_id_fk", "tableFrom": "intake_events", "tableTo": "intake_sessions", "columnsFrom": ["intake_session_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "intake_events_matter_id_matters_id_fk": { "name": "intake_events_matter_id_matters_id_fk", "tableFrom": "intake_events", "tableTo": "matters", "columnsFrom": ["matter_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "intake_events_firm_config_version_id_firm_config_versions_id_fk": { "name": "intake_events_firm_config_version_id_firm_config_versions_id_fk", "tableFrom": "intake_events", "tableTo": "firm_config_versions", "columnsFrom": ["firm_config_version_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {},
+      "checkConstraints": { "intake_events_actor_type_check": { "name": "intake_events_actor_type_check", "value": "\"intake_events\".\"actor_type\" in ('system','user','caller')" } },
+      "isRLSEnabled": false
+    },
+    "public.intake_sessions": {
+      "name": "intake_sessions", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "matter_id": { "name": "matter_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "current_node": { "name": "current_node", "type": "text", "primaryKey": false, "notNull": true, "default": "'classify_caller'" },
+        "terminal_state": { "name": "terminal_state", "type": "text", "primaryKey": false, "notNull": false },
+        "language": { "name": "language", "type": "text", "primaryKey": false, "notNull": true, "default": "'en'" },
+        "channel": { "name": "channel", "type": "text", "primaryKey": false, "notNull": false },
+        "collected_answers": { "name": "collected_answers", "type": "jsonb", "primaryKey": false, "notNull": true, "default": "'{}'::jsonb" },
+        "firm_config_version_id": { "name": "firm_config_version_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "classifier_output": { "name": "classifier_output", "type": "jsonb", "primaryKey": false, "notNull": false },
+        "started_at": { "name": "started_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" },
+        "completed_at": { "name": "completed_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false }
+      },
+      "indexes": {
+        "intake_sessions_inflight_idx": { "name": "intake_sessions_inflight_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "terminal_state", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "intake_sessions_tenant_id_firms_id_fk": { "name": "intake_sessions_tenant_id_firms_id_fk", "tableFrom": "intake_sessions", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "intake_sessions_matter_id_matters_id_fk": { "name": "intake_sessions_matter_id_matters_id_fk", "tableFrom": "intake_sessions", "tableTo": "matters", "columnsFrom": ["matter_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "intake_sessions_firm_config_version_id_firm_config_versions_id_fk": { "name": "intake_sessions_firm_config_version_id_firm_config_versions_id_fk", "tableFrom": "intake_sessions", "tableTo": "firm_config_versions", "columnsFrom": ["firm_config_version_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.matter_parties": {
+      "name": "matter_parties", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "matter_id": { "name": "matter_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "party_id": { "name": "party_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "role": { "name": "role", "type": "party_role", "typeSchema": "public", "primaryKey": false, "notNull": true }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "matter_parties_tenant_id_firms_id_fk": { "name": "matter_parties_tenant_id_firms_id_fk", "tableFrom": "matter_parties", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "matter_parties_matter_id_matters_id_fk": { "name": "matter_parties_matter_id_matters_id_fk", "tableFrom": "matter_parties", "tableTo": "matters", "columnsFrom": ["matter_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "matter_parties_party_id_parties_id_fk": { "name": "matter_parties_party_id_parties_id_fk", "tableFrom": "matter_parties", "tableTo": "parties", "columnsFrom": ["party_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": { "matter_parties_matter_party_role_key": { "name": "matter_parties_matter_party_role_key", "nullsNotDistinct": false, "columns": ["matter_id", "party_id", "role"] } },
+      "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.matters": {
+      "name": "matters", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "primary_party_id": { "name": "primary_party_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "practice_area": { "name": "practice_area", "type": "text", "primaryKey": false, "notNull": false },
+        "stage": { "name": "stage", "type": "matter_stage", "typeSchema": "public", "primaryKey": false, "notNull": true, "default": "'prospective'" },
+        "assigned_user_id": { "name": "assigned_user_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "retention_years": { "name": "retention_years", "type": "integer", "primaryKey": false, "notNull": false },
+        "opened_at": { "name": "opened_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" },
+        "closed_at": { "name": "closed_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "eligible_for_deletion_at": { "name": "eligible_for_deletion_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false }
+      },
+      "indexes": {
+        "matters_tenant_stage_idx": { "name": "matters_tenant_stage_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "stage", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} },
+        "matters_tenant_deletion_idx": { "name": "matters_tenant_deletion_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "eligible_for_deletion_at", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "matters_tenant_id_firms_id_fk": { "name": "matters_tenant_id_firms_id_fk", "tableFrom": "matters", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "matters_primary_party_id_parties_id_fk": { "name": "matters_primary_party_id_parties_id_fk", "tableFrom": "matters", "tableTo": "parties", "columnsFrom": ["primary_party_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "matters_assigned_user_id_users_id_fk": { "name": "matters_assigned_user_id_users_id_fk", "tableFrom": "matters", "tableTo": "users", "columnsFrom": ["assigned_user_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.outbox": {
+      "name": "outbox", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "matter_id": { "name": "matter_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "destination": { "name": "destination", "type": "text", "primaryKey": false, "notNull": true },
+        "operation": { "name": "operation", "type": "text", "primaryKey": false, "notNull": true },
+        "payload": { "name": "payload", "type": "jsonb", "primaryKey": false, "notNull": true },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "default": "'pending'" },
+        "attempts": { "name": "attempts", "type": "integer", "primaryKey": false, "notNull": true, "default": 0 },
+        "last_error": { "name": "last_error", "type": "text", "primaryKey": false, "notNull": false },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" },
+        "sent_at": { "name": "sent_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false }
+      },
+      "indexes": {
+        "outbox_status_idx": { "name": "outbox_status_idx", "columns": [ { "expression": "status", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "created_at", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "outbox_tenant_id_firms_id_fk": { "name": "outbox_tenant_id_firms_id_fk", "tableFrom": "outbox", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "outbox_matter_id_matters_id_fk": { "name": "outbox_matter_id_matters_id_fk", "tableFrom": "outbox", "tableTo": "matters", "columnsFrom": ["matter_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {},
+      "checkConstraints": { "outbox_status_check": { "name": "outbox_status_check", "value": "\"outbox\".\"status\" in ('pending','sent','failed','abandoned')" } },
+      "isRLSEnabled": false
+    },
+    "public.parties": {
+      "name": "parties", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "full_name": { "name": "full_name", "type": "text", "primaryKey": false, "notNull": true },
+        "normalized_name": { "name": "normalized_name", "type": "text", "primaryKey": false, "notNull": true },
+        "date_of_birth": { "name": "date_of_birth", "type": "text", "primaryKey": false, "notNull": false },
+        "email": { "name": "email", "type": "text", "primaryKey": false, "notNull": false },
+        "phone": { "name": "phone", "type": "text", "primaryKey": false, "notNull": false },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {
+        "parties_tenant_normalized_name_idx": { "name": "parties_tenant_normalized_name_idx", "columns": [ { "expression": "tenant_id", "isExpression": false, "asc": true, "nulls": "last" }, { "expression": "normalized_name", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "parties_tenant_id_firms_id_fk": { "name": "parties_tenant_id_firms_id_fk", "tableFrom": "parties", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.scheduled_tasks": {
+      "name": "scheduled_tasks", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "intake_session_id": { "name": "intake_session_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "matter_id": { "name": "matter_id", "type": "uuid", "primaryKey": false, "notNull": false },
+        "task_type": { "name": "task_type", "type": "text", "primaryKey": false, "notNull": true },
+        "due_at": { "name": "due_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true },
+        "claimed_at": { "name": "claimed_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "claimed_by_worker": { "name": "claimed_by_worker", "type": "text", "primaryKey": false, "notNull": false },
+        "completed_at": { "name": "completed_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "cancelled_at": { "name": "cancelled_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": false },
+        "payload": { "name": "payload", "type": "jsonb", "primaryKey": false, "notNull": true, "default": "'{}'::jsonb" }
+      },
+      "indexes": {
+        "scheduled_tasks_due_idx": { "name": "scheduled_tasks_due_idx", "columns": [ { "expression": "due_at", "isExpression": false, "asc": true, "nulls": "last" } ], "isUnique": false, "concurrently": false, "method": "btree", "with": {} }
+      },
+      "foreignKeys": {
+        "scheduled_tasks_tenant_id_firms_id_fk": { "name": "scheduled_tasks_tenant_id_firms_id_fk", "tableFrom": "scheduled_tasks", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "scheduled_tasks_intake_session_id_intake_sessions_id_fk": { "name": "scheduled_tasks_intake_session_id_intake_sessions_id_fk", "tableFrom": "scheduled_tasks", "tableTo": "intake_sessions", "columnsFrom": ["intake_session_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" },
+        "scheduled_tasks_matter_id_matters_id_fk": { "name": "scheduled_tasks_matter_id_matters_id_fk", "tableFrom": "scheduled_tasks", "tableTo": "matters", "columnsFrom": ["matter_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "policies": {}, "checkConstraints": {}, "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users", "schema": "",
+      "columns": {
+        "id": { "name": "id", "type": "uuid", "primaryKey": true, "notNull": true, "default": "gen_random_uuid()" },
+        "tenant_id": { "name": "tenant_id", "type": "uuid", "primaryKey": false, "notNull": true },
+        "email": { "name": "email", "type": "text", "primaryKey": false, "notNull": true },
+        "display_name": { "name": "display_name", "type": "text", "primaryKey": false, "notNull": true },
+        "role": { "name": "role", "type": "user_role", "typeSchema": "public", "primaryKey": false, "notNull": true },
+        "role_label": { "name": "role_label", "type": "text", "primaryKey": false, "notNull": false },
+        "mfa_enrolled": { "name": "mfa_enrolled", "type": "boolean", "primaryKey": false, "notNull": true, "default": false },
+        "status": { "name": "status", "type": "text", "primaryKey": false, "notNull": true, "default": "'active'" },
+        "restricted_to_unassigned_matters": { "name": "restricted_to_unassigned_matters", "type": "boolean", "primaryKey": false, "notNull": true, "default": false },
+        "created_at": { "name": "created_at", "type": "timestamp with time zone", "primaryKey": false, "notNull": true, "default": "now()" }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "users_tenant_id_firms_id_fk": { "name": "users_tenant_id_firms_id_fk", "tableFrom": "users", "tableTo": "firms", "columnsFrom": ["tenant_id"], "columnsTo": ["id"], "onDelete": "no action", "onUpdate": "no action" }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": { "users_tenant_email_key": { "name": "users_tenant_email_key", "nullsNotDistinct": false, "columns": ["tenant_id", "email"] } },
+      "policies": {},
+      "checkConstraints": { "users_status_check": { "name": "users_status_check", "value": "\"users\".\"status\" in ('active','invited','disabled')" } },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.conflict_outcome": { "name": "conflict_outcome", "schema": "public", "values": ["clear", "possible", "definite"] },
+    "public.matter_stage": { "name": "matter_stage", "schema": "public", "values": ["prospective", "consultation_scheduled", "consult_completed_manual_follow_up", "pending_review", "did_not_schedule", "did_not_hire_referred_out", "declined_conflict", "retained", "closed"] },
+    "public.party_role": { "name": "party_role", "schema": "public", "values": ["caller", "opposing_party", "co_party"] },
+    "public.sensitivity_tier": { "name": "sensitivity_tier", "schema": "public", "values": ["standard", "sensitive"] },
+    "public.user_role": { "name": "user_role", "schema": "public", "values": ["firm_admin", "attorney", "intake_staff", "read_only", "integration_service"] }
+  },
+  "schemas": {}, "sequences": {}, "roles": {}, "policies": {}, "views": {},
+  "_meta": { "columns": {}, "schemas": {}, "tables": {} }
+}
