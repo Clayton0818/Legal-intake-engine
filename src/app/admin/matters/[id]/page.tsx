@@ -6,7 +6,6 @@
 // Component directly.
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { withTenant } from "@/tenancy/withTenant";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { getMatterDetail, MATTER_STAGE_VALUES } from "../../_lib/queries";
 import {
@@ -29,6 +28,11 @@ export default async function MatterDetailPage({
 }) {
   const { id } = await params;
   const tenantId = getDevTenantId();
+  // withTenant (and, transitively, src/tenancy/db.ts) is imported lazily,
+  // not statically at module scope — see src/app/admin/page.tsx's comment
+  // for why a static import here would make DATABASE_URL a build-time
+  // requirement instead of a request-time one.
+  const { withTenant } = await import("@/tenancy/withTenant");
   const detail = await withTenant(tenantId, (tx) => getMatterDetail(tx, tenantId, id));
 
   if (!detail) {

@@ -5,9 +5,16 @@
 // exported from src/tenancy/, so there's no other way this route could
 // query the table even if someone tried.
 import { NextResponse } from "next/server";
-import { withTenant } from "@/tenancy/withTenant";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { listMattersForTenant } from "@/app/admin/_lib/queries";
+
+// withTenant (and, transitively, src/tenancy/db.ts) is imported lazily
+// inside the handler, not statically at module scope. db.ts throws at
+// import time if DATABASE_URL is unset, and `next build`'s "collecting
+// page data" step actually loads every route module to inspect it — a
+// static top-level import here would make DATABASE_URL a *build-time*
+// requirement (CI's build step deliberately runs without it; see
+// .github/workflows/ci.yml).
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +31,7 @@ export async function GET() {
   }
 
   try {
+    const { withTenant } = await import("@/tenancy/withTenant");
     const matterRows = await withTenant(tenantId, (tx) => listMattersForTenant(tx, tenantId));
     return NextResponse.json({ matters: matterRows });
   } catch (error) {
