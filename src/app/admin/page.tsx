@@ -25,11 +25,16 @@ export default async function AdminHome() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900">Matters queue</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {matterRows.length} matter{matterRows.length === 1 ? "" : "s"} for this firm.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Matters queue</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            {matterRows.length} matter{matterRows.length === 1 ? "" : "s"} for this firm.
+          </p>
+        </div>
+        <Link href="/admin/insights" className="text-sm text-slate-500 hover:underline">
+          View insights →
+        </Link>
       </div>
 
       {matterRows.length === 0 ? (

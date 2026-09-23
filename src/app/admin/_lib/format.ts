@@ -88,3 +88,8 @@ const CONFLICT_OUTCOME_BADGE_CLASSES: Record<string, string> = {
 export function conflictOutcomeBadgeClass(outcome: string): string {
   return CONFLICT_OUTCOME_BADGE_CLASSES[outcome] ?? "bg-slate-100 text-slate-700";
 }
+
+export function formatPercent(ratio: number): string {
+  if (!Number.isFinite(ratio)) return "—";
+  return `${Math.round(ratio * 100)}%`;
+}

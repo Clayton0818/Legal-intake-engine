@@ -142,3 +142,86 @@ export async function updateMatterStage(
     .returning();
   return updated ?? null;
 }
+
+export const CONFLICT_OUTCOME_VALUES = ["clear", "possible", "definite"] as const;
+export type ConflictOutcome = (typeof CONFLICT_OUTCOME_VALUES)[number];
+
+export interface InsightsData {
+  totalMatters: number;
+  byStage: { stage: MatterStage; count: number }[];
+  byPracticeArea: { practiceArea: string; count: number }[];
+  byConflictOutcome: { outcome: ConflictOutcome; count: number }[];
+  unassignedCount: number;
+  retainedCount: number;
+  retainedRate: number;
+  declinedConflictCount: number;
+}
+
+// Board card c33 — the firm-facing "so what" this console has been missing:
+// every number here already exists in matters/conflict_check_results (the
+// c19 data model and the c6 audit trail were built for exactly this), it
+// just had no view. Aggregation happens in application code rather than a
+// SQL GROUP BY: dataset sizes here (a firm's own matters) are small enough
+// that this is simpler to read and to keep tenant-scoped than hand-rolling
+// grouped queries per stat, and it keeps every stat derived from the same
+// single fetch, so the numbers can never drift from each other.
+export async function getInsightsForTenant(
+  tx: TenantTx,
+  tenantId: string
+): Promise<InsightsData> {
+  const matterRows = await tx
+    .select({
+      stage: matters.stage,
+      practiceArea: matters.practiceArea,
+      assignedUserId: matters.assignedUserId,
+    })
+    .from(matters)
+    .where(eq(matters.tenantId, tenantId));
+
+  const conflictRows = await tx
+    .select({ outcome: conflictCheckResults.outcome })
+    .from(conflictCheckResults)
+    .where(eq(conflictCheckResults.tenantId, tenantId));
+
+  const stageCounts = new Map<string, number>();
+  const practiceAreaCounts = new Map<string, number>();
+  let unassignedCount = 0;
+
+  for (const m of matterRows) {
+    stageCounts.set(m.stage, (stageCounts.get(m.stage) ?? 0) + 1);
+    const practiceArea = m.practiceArea ?? "unspecified";
+    practiceAreaCounts.set(practiceArea, (practiceAreaCounts.get(practiceArea) ?? 0) + 1);
+    if (!m.assignedUserId) unassignedCount += 1;
+  }
+
+  const conflictCounts = new Map<string, number>();
+  for (const c of conflictRows) {
+    conflictCounts.set(c.outcome, (conflictCounts.get(c.outcome) ?? 0) + 1);
+  }
+
+  const totalMatters = matterRows.length;
+  const retainedCount = stageCounts.get("retained") ?? 0;
+  const declinedConflictCount = stageCounts.get("declined_conflict") ?? 0;
+
+  return {
+    totalMatters,
+    // Every stage is included even at zero, so the breakdown's shape is
+    // stable across firms/tenants rather than only listing whatever
+    // happens to have a row today.
+    byStage: MATTER_STAGE_VALUES.map((stage) => ({
+      stage,
+      count: stageCounts.get(stage) ?? 0,
+    })),
+    byPracticeArea: Array.from(practiceAreaCounts.entries())
+      .map(([practiceArea, count]) => ({ practiceArea, count }))
+      .sort((a, b) => b.count - a.count),
+    byConflictOutcome: CONFLICT_OUTCOME_VALUES.map((outcome) => ({
+      outcome,
+      count: conflictCounts.get(outcome) ?? 0,
+    })),
+    unassignedCount,
+    retainedCount,
+    retainedRate: totalMatters === 0 ? 0 : retainedCount / totalMatters,
+    declinedConflictCount,
+  };
+}
