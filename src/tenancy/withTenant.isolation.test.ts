@@ -27,13 +27,30 @@ describe("cross-tenant isolation (ADR-0001 §D5 required check)", () => {
   afterAll(async () => {
     // Clean up so this test doesn't leave synthetic rows behind in a shared
     // staging database on every CI run.
+    //
+    // These deletes MUST go through withTenant(), not rawDb directly:
+    // matters/parties are RLS-protected on tenant_id, and outside a
+    // withTenant() transaction `app.tenant_id` is unset, so an unscoped
+    // rawDb.delete() here silently matches zero rows (RLS filters them
+    // out) instead of erroring — it looks like it succeeded but leaves the
+    // rows in place. The firms.id references from those tables then have
+    // no ON DELETE behavior (see src/db/schema.ts), so the plain
+    // rawDb.delete(firms) below throws a foreign-key violation, which
+    // surfaces as this whole test failing even when both assertions above
+    // passed. (This is exactly why five leftover "Isolation Test Firm"
+    // pairs, and their orphaned parties/matters rows, were found sitting
+    // in the staging database — every prior CI run hit this.)
     if (tenantAId) {
-      await rawDb.delete(matters).where(eq(matters.tenantId, tenantAId));
-      await rawDb.delete(parties).where(eq(parties.tenantId, tenantAId));
+      await withTenant(tenantAId, async (tx) => {
+        await tx.delete(matters).where(eq(matters.tenantId, tenantAId));
+        await tx.delete(parties).where(eq(parties.tenantId, tenantAId));
+      });
     }
     if (tenantBId) {
-      await rawDb.delete(matters).where(eq(matters.tenantId, tenantBId));
-      await rawDb.delete(parties).where(eq(parties.tenantId, tenantBId));
+      await withTenant(tenantBId, async (tx) => {
+        await tx.delete(matters).where(eq(matters.tenantId, tenantBId));
+        await tx.delete(parties).where(eq(parties.tenantId, tenantBId));
+      });
     }
     if (tenantAId) await rawDb.delete(firms).where(eq(firms.id, tenantAId));
     if (tenantBId) await rawDb.delete(firms).where(eq(firms.id, tenantBId));
