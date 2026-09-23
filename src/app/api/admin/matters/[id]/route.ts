@@ -7,9 +7,16 @@
 // Both handlers go through withTenant() per ADR-0001 §D5 — see the sibling
 // list route's comment for why there's no other way to reach this table.
 import { NextResponse } from "next/server";
-import { withTenant } from "@/tenancy/withTenant";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { getMatterDetail, isMatterStage, updateMatterStage } from "@/app/admin/_lib/queries";
+
+// withTenant (and, transitively, src/tenancy/db.ts) is imported lazily
+// inside each handler, not statically at module scope. db.ts throws at
+// import time if DATABASE_URL is unset, and `next build`'s "collecting
+// page data" step actually loads every route module to inspect it — a
+// static top-level import here would make DATABASE_URL a *build-time*
+// requirement (CI's build step deliberately runs without it; see
+// .github/workflows/ci.yml).
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +38,7 @@ export async function GET(
   }
 
   try {
+    const { withTenant } = await import("@/tenancy/withTenant");
     const detail = await withTenant(tenantId, (tx) => getMatterDetail(tx, tenantId, id));
     if (!detail) {
       return NextResponse.json({ error: "Matter not found." }, { status: 404 });
@@ -75,6 +83,7 @@ export async function PATCH(
   }
 
   try {
+    const { withTenant } = await import("@/tenancy/withTenant");
     const updated = await withTenant(tenantId, (tx) => updateMatterStage(tx, tenantId, id, stage));
     if (!updated) {
       return NextResponse.json({ error: "Matter not found." }, { status: 404 });

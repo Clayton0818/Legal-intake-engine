@@ -2,7 +2,6 @@
 // getDevTenantId() per ADR-0001 §D5 — see src/tenancy/devTenant.ts for why
 // this is a temporary stand-in for real auth rather than a new mechanism.
 import Link from "next/link";
-import { withTenant } from "@/tenancy/withTenant";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { listMattersForTenant } from "./_lib/queries";
 import { formatDate, formatEnumLabel, stageBadgeClass } from "./_lib/format";
@@ -14,6 +13,14 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminHome() {
   const tenantId = getDevTenantId();
+  // withTenant (and, transitively, src/tenancy/db.ts) is imported lazily,
+  // not statically at module scope. db.ts throws at import time if
+  // DATABASE_URL is unset, and `next build`'s "collecting page data" step
+  // actually loads every route/page module to inspect it — a static
+  // top-level import here would make DATABASE_URL a *build-time*
+  // requirement (CI's build step deliberately runs without it; see
+  // .github/workflows/ci.yml).
+  const { withTenant } = await import("@/tenancy/withTenant");
   const matterRows = await withTenant(tenantId, (tx) => listMattersForTenant(tx, tenantId));
 
   return (
