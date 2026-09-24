@@ -8,6 +8,13 @@
       "when": 1758516000000,
       "tag": "0000_material_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790251200000,
+      "tag": "0001_secure_firms_rls",
+      "breakpoints": true
     }
   ]
 }
