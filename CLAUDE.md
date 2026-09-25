@@ -4,7 +4,9 @@ Instructions for any Claude session (scheduled or manual) working in this reposi
 
 ## What this project is
 
-A generic, commercial legal-intake AI: conversational triage, conflict-check automation, and a compliance-aware pipeline a law firm can drop its own intake process into. Owner: Clayton (idiongo@hotmail.com).
+A generic, commercial legal **case management** platform: conversational intake and triage, conflict-check automation, and a compliance-aware pipeline a law firm can drop its own intake process into, extending through the full matter lifecycle — documents, calendaring/deadlines, time tracking and billing, trust accounting, client communication, and task management. Owner: Clayton (idiongo@hotmail.com).
+
+**2026-09-25 scope expansion:** the product was repositioned from intake-only to full case management at the founder's direct request. See `docs/product/case-management-expansion-scope.md` for the scope memo, the new competitive set (Clio Manage, MyCase, PracticePanther, Smokeball, and similar full-suite products, not just the intake-only comparison set `c15` reviewed), the new trust-accounting/IOLTA compliance surface this adds, and a recommended second dependency track that runs *alongside* — not instead of — the existing one below. The numbered dependency order below still governs the original intake-track cards; the case-management track has its own sequence in that memo's §6, and its cards live on the board just like any other.
 
 ## Source of truth for status
 
@@ -62,7 +64,7 @@ Any card with `type: "Founder"` is Clayton's own task — reviewing/merging PRs,
 - Check `docs/` and open PRs before starting anything, so you don't duplicate work already done or in flight.
 - **The connector cannot push binary files** — it encodes content as text. Images, PDFs and similar can't be committed. Extract them to text/markdown, or keep them outside the repo.
 
-## Dependency order
+## Dependency order (original intake track)
 
 Later items depend on earlier ones being settled. Don't jump ahead just because something downstream is also P0.
 
@@ -82,11 +84,13 @@ Later items depend on earlier ones being settled. Don't jump ahead just because 
 14. Admin/staff console UI (build)
 15. Everything else by priority (conflict-check engine, e-signature/engagement letters, PM-tool integrations, audit log, client status portal, pricing, competitive scan, pilot recruitment)
 
+**Case management track (added 2026-09-25):** runs alongside the list above, not after it. Its own sequence — trust accounting/IOLTA compliance review first, then the data-model extension, then the individual case-management features, with the trust-accounting ledger itself gated on both the compliance review and the data-model work — is in `docs/product/case-management-expansion-scope.md` §6. Treat that memo's sequence with the same "don't jump ahead" discipline this list gets.
+
 ## Compliance content guardrails
 
-This project touches unauthorized-practice-of-law (UPL) rules, data privacy law, and liability terms. When writing anything in `docs/compliance/` or touching legal/regulatory claims elsewhere:
+This project touches unauthorized-practice-of-law (UPL) rules, data privacy law, liability terms, and — as of the case-management expansion — trust accounting/IOLTA rules, which carry attorney-discipline (not just civil/regulatory) consequences and need a CPA reviewer in addition to an attorney reviewer. When writing anything in `docs/compliance/` or touching legal/regulatory/accounting claims elsewhere:
 
 - Ground claims in actual current sources (state bar rules, real statutes) via web search — never fabricate a citation or a legal conclusion.
-- Write findings as research and a recommended approach, not a definitive legal opinion.
-- Explicitly flag that a licensed attorney in the relevant jurisdiction should review the material before it's relied on.
+- Write findings as research and a recommended approach, not a definitive legal or accounting opinion.
+- Explicitly flag that a licensed attorney (and, for trust accounting specifically, a CPA) in the relevant jurisdiction should review the material before it's relied on.
 - When in doubt, under-claim. This is a legal product; confident-sounding wrong answers here are a real liability, not just a bug.
