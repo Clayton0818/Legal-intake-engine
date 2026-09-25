@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { getDevTenantId } from "@/tenancy/devTenant";
 import { getInsightsForTenant } from "../_lib/queries";
-import { formatEnumLabel, formatPercent, conflictOutcomeBadgeClass, stageBadgeClass } from "../_lib/format";
+import { formatEnumLabel, formatPercent, conflictOutcomeBadgeClass } from "../_lib/format";
 
 // Tenant-scoped data must never be served from Next's static/full route
 // cache, matching the rest of /admin.
@@ -48,16 +48,29 @@ function BarRow({
   );
 }
 
-// The badge classes in _lib/format.ts are text/background pairs meant for
-// small pill labels (e.g. "bg-green-100 text-green-700"), not solid fills —
-// a full-width bar in the pale "-100" tone reads as barely-there. Pull just
-// the hue up to a "-400" solid fill for the bar itself while reusing the
-// same color family, so a stage's bar and its badge are still recognizably
-// the same color.
-function barFillClass(twBadgeClass: string): string {
-  const match = twBadgeClass.match(/bg-(\w+)-100/);
-  const hue = match?.[1] ?? "slate";
-  return `bg-${hue}-400`;
+// Solid-fill bar colors, one per stage, matching stageBadgeClass's color
+// family so a stage's bar and its badge read as the same color. This is a
+// static map rather than deriving the class name at runtime (e.g.
+// `bg-${hue}-400`) on purpose: Tailwind's build only includes classes it
+// can find as complete literal strings in the source it scans. A
+// dynamically-assembled class name is invisible to that scan, so the class
+// never makes it into the compiled CSS and the bar silently renders with no
+// fill at all — which is exactly the bug this replaces (caught by actually
+// looking at a rendered screenshot, not just reading the code).
+const STAGE_BAR_FILL_CLASSES: Record<string, string> = {
+  prospective: "bg-slate-400",
+  consultation_scheduled: "bg-blue-400",
+  consult_completed_manual_follow_up: "bg-amber-400",
+  pending_review: "bg-amber-400",
+  did_not_schedule: "bg-slate-300",
+  did_not_hire_referred_out: "bg-slate-300",
+  declined_conflict: "bg-red-400",
+  retained: "bg-green-400",
+  closed: "bg-slate-400",
+};
+
+function stageBarFillClass(stage: string): string {
+  return STAGE_BAR_FILL_CLASSES[stage] ?? "bg-slate-400";
 }
 
 export default async function AdminInsights() {
@@ -116,7 +129,7 @@ export default async function AdminInsights() {
                 label={formatEnumLabel(row.stage)}
                 count={row.count}
                 total={insights.totalMatters}
-                badgeClass={barFillClass(stageBadgeClass(row.stage))}
+                badgeClass={stageBarFillClass(row.stage)}
               />
             ))}
           </div>
