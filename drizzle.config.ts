@@ -5,7 +5,9 @@ import { defineConfig } from "drizzle-kit";
 // This config is only used to *generate* that SQL (`npm run db:generate`);
 // nothing here runs automatically against a live database.
 export default defineConfig({
-  schema: "./src/db/schema.ts",
+  // schema.ts holds the original c19 tables; src/db/tables/*.ts hold the
+  // case-management foundation (foundation.ts) and one file per engine.
+  schema: ["./src/db/schema.ts", "./src/db/tables/*.ts"],
   out: "./migrations",
   dialect: "postgresql",
   dbCredentials: {
