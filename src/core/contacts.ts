@@ -18,7 +18,7 @@ export type { SafeContactPreferences };
 export function normalizeName(name: string): string {
   return name
     .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "") // strip combining accents
+    .replace(/\p{M}/gu, "") // strip combining accents (Unicode marks)
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
