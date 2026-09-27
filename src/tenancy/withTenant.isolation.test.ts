@@ -10,21 +10,26 @@
 // (migrations/0000_*.sql) and the app_runtime role + RLS policies in place.
 // In CI (see .github/workflows/ci.yml) this runs against the staging
 // Supabase project via secrets.DATABASE_URL_STAGING.
+//
+// Without DATABASE_URL this suite is skipped (plain `npm test`); under
+// `npm run test:isolation` (REQUIRE_DATABASE_TESTS=1) a missing URL fails
+// instead — see ./testing.ts. The DB modules are imported lazily because
+// ./db.ts throws at import time when DATABASE_URL is unset.
 
-import { describe, it, expect, afterAll } from "vitest";
+import { it, expect, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
-import { withTenant } from "./withTenant";
-import { rawDb } from "./db";
 import { firms, matters, parties } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { describeWithDb, loadDb } from "./testing";
 
-describe("cross-tenant isolation (ADR-0001 §D5 required check)", () => {
+describeWithDb("cross-tenant isolation (ADR-0001 §D5 required check)", () => {
   const tenantASlug = `isolation-test-a-${Date.now()}`;
   const tenantBSlug = `isolation-test-b-${Date.now()}`;
   let tenantAId: string;
   let tenantBId: string;
 
   afterAll(async () => {
+    const { withTenant, rawDb } = await loadDb();
     // Clean up so this test doesn't leave synthetic rows behind in a shared
     // staging database on every CI run.
     //
@@ -57,6 +62,7 @@ describe("cross-tenant isolation (ADR-0001 §D5 required check)", () => {
   });
 
   it("seeds two tenants and confirms tenant B cannot see tenant A's data", async () => {
+    const { withTenant, rawDb } = await loadDb();
     // Seed via rawDb directly (not withTenant) since firms itself isn't
     // tenant-scoped — this mirrors how a real onboarding flow would create
     // the tenant row before any withTenant()-scoped work happens for it.
@@ -103,6 +109,7 @@ describe("cross-tenant isolation (ADR-0001 §D5 required check)", () => {
   });
 
   it("confirms app_runtime cannot UPDATE or DELETE intake_events (c6 §3 immutability)", async () => {
+    const { rawDb } = await loadDb();
     const result = await rawDb.execute(sql`select has_table_privilege('app_runtime', 'intake_events', 'UPDATE') as can_update, has_table_privilege('app_runtime', 'intake_events', 'DELETE') as can_delete`);
     const row = (result as unknown as { can_update: boolean; can_delete: boolean }[])[0];
     expect(row?.can_update).toBe(false);

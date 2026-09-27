@@ -10,8 +10,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:isolation": "vitest run src/tenancy/withTenant.isolation.test.ts",
+    "test:isolation": "REQUIRE_DATABASE_TESTS=1 vitest run src/tenancy/withTenant.isolation.test.ts",
     "worker:tick": "tsx src/worker/tick.ts",
+    "compliance": "tsx src/compliance/cli.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },

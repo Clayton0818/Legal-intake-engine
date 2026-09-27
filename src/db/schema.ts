@@ -23,7 +23,10 @@ import {
   unique,
   index,
   check,
+  bigint,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import type { SafeContactPreferences } from "./types";
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -53,6 +56,20 @@ export const partyRoleEnum = pgEnum("party_role", [
   "caller",
   "opposing_party",
   "co_party",
+  // Case-management foundation (2026-09-26): roles a party can hold on an
+  // open matter, not just at intake. Appended (never reordered) so the
+  // generated migration is a pure `ALTER TYPE ... ADD VALUE`. Family Law
+  // (c103) needs children, the other parent, new partners and grandparents
+  // indexed as parties; c56 needs opposing counsel and related parties.
+  "client",
+  "opposing_counsel",
+  "child",
+  "related_party",
+  "witness",
+  "expert",
+  "guardian_ad_litem",
+  "court",
+  "other",
 ]);
 
 export const conflictOutcomeEnum = pgEnum("conflict_outcome", [
@@ -118,6 +135,16 @@ export const users = pgTable("users", {
 // §4 Matters, parties, and conflict-check data
 // ---------------------------------------------------------------------------
 
+// `parties` is THE contact registry for the whole product (case-management
+// foundation, 2026-09-26): every person or organisation the firm deals with —
+// clients, prospective clients, opposing parties, children, opposing counsel,
+// courts — lives here exactly once, so the conflict-check party index (c56)
+// searches the same rows every other engine writes. `src/db/tables/
+// foundation.ts` re-exports this table as `contacts` for readability; it is
+// the same SQL table, not a second one.
+//
+// Columns below `phone` were added by the foundation and are all nullable or
+// defaulted, so the generated migration is purely additive.
 export const parties = pgTable("parties", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").notNull().references(() => firms.id),
@@ -127,8 +154,29 @@ export const parties = pgTable("parties", {
   email: text("email"),
   phone: text("phone"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /** 'person' | 'organization'. */
+  kind: text("kind").notNull().default("person"),
+  /** Former/maiden/married names, nicknames, business names (c56, c57). */
+  aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
+  /** Same aliases, normalised the same way as `normalizedName`, for search. */
+  normalizedAliases: text("normalized_aliases").array().notNull().default(sql`'{}'::text[]`),
+  /** Additional addresses beyond the primary `email`/`phone`. */
+  emails: text("emails").array().notNull().default(sql`'{}'::text[]`),
+  phones: text("phones").array().notNull().default(sql`'{}'::text[]`),
+  /** Parent organisation (subsidiary links, c56). */
+  parentPartyId: uuid("parent_party_id").references((): AnyPgColumn => parties.id),
+  /**
+   * Safe-contact preferences (c51, c42, c103). Shape: `SafeContactPreferences`
+   * in src/db/types.ts. Notifications resolve addresses ONLY through
+   * those preferences — never by reading `email`/`phone` directly.
+   */
+  safeContact: jsonb("safe_contact").$type<SafeContactPreferences>().notNull().default({}),
+  /** Domestic-violence / safety sensitivity: forces DV-safe delivery rules. */
+  dvSensitive: boolean("dv_sensitive").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("parties_tenant_normalized_name_idx").on(table.tenantId, table.normalizedName),
+  check("parties_kind_check", sql`${table.kind} in ('person','organization')`),
 ]);
 
 export const matters = pgTable("matters", {
@@ -161,8 +209,17 @@ export const matterParties = pgTable("matter_parties", {
   matterId: uuid("matter_id").notNull().references(() => matters.id),
   partyId: uuid("party_id").notNull().references(() => parties.id),
   role: partyRoleEnum("role").notNull(),
+  // Foundation additions (nullable/defaulted — additive migration only).
+  /** Free-text relationship detail, e.g. 'spouse', 'new partner', 'grandparent'. */
+  relationship: text("relationship"),
+  /** True when this party's interests are adverse to the firm's client. */
+  isAdverse: boolean("is_adverse"),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Set when the party stops being involved; the row is kept for conflicts. */
+  endedAt: timestamp("ended_at", { withTimezone: true }),
 }, (table) => [
   unique("matter_parties_matter_party_role_key").on(table.matterId, table.partyId, table.role),
+  index("matter_parties_tenant_party_idx").on(table.tenantId, table.partyId),
 ]);
 
 export const conflictCheckResults = pgTable("conflict_check_results", {
@@ -258,6 +315,11 @@ export const outbox = pgTable("outbox", {
 // §6 Documents
 // ---------------------------------------------------------------------------
 
+// Metadata only — file bytes live in object storage (scope memo §4 storage
+// ADR addendum, still open). Every upload is a NEW row (version + 1 in the
+// same `versionGroupId`); rows are never overwritten (c84). Columns below
+// `createdAt` were added by the case-management foundation and are all
+// nullable or defaulted, so the migration is additive.
 export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   tenantId: uuid("tenant_id").notNull().references(() => firms.id),
@@ -267,4 +329,33 @@ export const documents = pgTable("documents", {
   sensitivityTier: sensitivityTierEnum("sensitivity_tier").notNull().default("standard"),
   uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  /** Display name, e.g. 'Final Decree of Divorce.pdf'. */
+  name: text("name"),
+  /** 1-based version within `versionGroupId`. */
+  version: integer("version").notNull().default(1),
+  /** id of the first version; null on version 1 means "this row is the group". */
+  versionGroupId: uuid("version_group_id").references((): AnyPgColumn => documents.id),
+  /** Lifecycle status — see DOCUMENT_STATUSES in src/core/documents.ts. */
+  status: text("status").notNull().default("draft"),
+  /** 'none' | 'privileged' | 'work_product' | 'confidential' | 'sealed' (c88). */
+  privilegeTag: text("privilege_tag").notNull().default("none"),
+  /** Client-shareable? Defaults to false: nothing reaches a client by default. */
+  clientVisible: boolean("client_visible").notNull().default(false),
+  /** Set when a client (not staff) uploaded it through the portal. */
+  uploadedByPartyId: uuid("uploaded_by_party_id").references(() => parties.id),
+  mimeType: text("mime_type"),
+  sizeBytes: bigint("size_bytes", { mode: "number" }),
+  sha256: text("sha256"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("documents_tenant_matter_idx").on(table.tenantId, table.matterId),
+  check(
+    "documents_status_check",
+    sql`${table.status} in ('draft','uploaded','in_review','attorney_approved','client_review','client_approved','final','filed','superseded','archived')`
+  ),
+  check(
+    "documents_privilege_tag_check",
+    sql`${table.privilegeTag} in ('none','privileged','work_product','confidential','sealed')`
+  ),
+  check("documents_version_check", sql`${table.version} >= 1`),
+]);
