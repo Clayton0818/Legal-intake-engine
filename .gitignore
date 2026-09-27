@@ -35,3 +35,6 @@ venv/
 # both run `npm install` (not `npm ci`) accordingly. Revisit if reproducible
 # installs become worth the diff noise (e.g. once a real team reviews PRs).
 package-lock.json
+
+# TypeScript incremental build info
+*.tsbuildinfo
