@@ -251,6 +251,13 @@ export const conflictChecks = pgTable("conflict_checks", {
   outcomeReasons: text("outcome_reasons").array().notNull().default(sql`'{}'::text[]`),
   /** True when the c55 rule table was applied (only once `rules.conflicts` is approved). */
   ruleTableApplied: boolean("rule_table_applied").notNull().default(false),
+  /**
+   * c3: the role-matrix evaluation (RoleEvaluation in
+   * src/engines/conflict-check/coreCheck.ts): the role sought, which barring
+   * conditions each hit meets, and whether the matrix was applied (only once
+   * `rules.conflicts` is approved). Internal: conflicts role only.
+   */
+  roleEvaluation: jsonb("role_evaluation").$type<Record<string, unknown>>().notNull().default({}),
   /** 'open' (awaiting decision) | 'decided' | 'superseded' | 'not_required' (clear). */
   status: text("status").notNull(),
   decisionTaskId: uuid("decision_task_id").references(() => tasks.id),
@@ -601,7 +608,169 @@ export const conflictSyncState = pgTable("conflict_sync_state", {
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   /** When the daily maintenance task (dedupe scan, retention purge, re-confirmations) was last queued. */
   maintenanceQueuedAt: timestamp("maintenance_queued_at", { withTimezone: true }),
+  /** c58 (5): parties created after this were not yet re-checked against open matters. */
+  recheckCursor: timestamp("recheck_cursor", { withTimezone: true }),
+  recheckCursorId: uuid("recheck_cursor_id"),
+  /** c57: parties updated after this may be missing match keys (keyset on updated_at, id). */
+  matchKeysCursor: timestamp("match_keys_cursor", { withTimezone: true }),
+  matchKeysCursorId: uuid("match_keys_cursor_id"),
 }, (t) => [uniqueIndex("conflict_sync_state_tenant_key").on(t.tenantId)]);
+
+// ---------------------------------------------------------------------------
+// c57 — match keys and addresses for near-miss search
+// ---------------------------------------------------------------------------
+
+/**
+ * Phonetic and nickname keys per party name (nameRules.matchKeysForName).
+ * The index prefilter uses them so a typo in both the start and the end of a
+ * name ("Jon Smyth" / "John Smith") still reaches the matcher. Derived data:
+ * rebuilt from `parties` and `party_name_variants` at any time.
+ */
+export const partyMatchKeys = pgTable("party_match_keys", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  partyId: uuid("party_id").notNull().references(() => parties.id),
+  key: text("key").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("party_match_keys_party_key").on(t.tenantId, t.partyId, t.key),
+  index("party_match_keys_tenant_key_idx").on(t.tenantId, t.key),
+]);
+
+/** Postal addresses known for a party (import, intake). Secondary identifier only (c57). */
+export const partyAddresses = pgTable("party_addresses", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  partyId: uuid("party_id").notNull().references(() => parties.id),
+  address: text("address").notNull(),
+  normalizedAddress: text("normalized_address").notNull(),
+  source: text("source").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("party_addresses_party_address_key").on(t.tenantId, t.partyId, t.normalizedAddress),
+  check("party_addresses_source_check", sql`${t.source} in ('intake','matter','document','import','manual')`),
+]);
+
+// ---------------------------------------------------------------------------
+// c58 — automatic triggers
+// ---------------------------------------------------------------------------
+
+/**
+ * Last seen state of each matter, so the worker can tell when a closed
+ * matter is reopened (c58 trigger 3) without another engine calling us.
+ */
+export const conflictMatterWatch = pgTable("conflict_matter_watch", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  matterId: uuid("matter_id").notNull().references(() => matters.id),
+  lastStage: text("last_stage").notNull(),
+  lastClosedAt: timestamp("last_closed_at", { withTimezone: true }),
+  lastReopenCheckAt: timestamp("last_reopen_check_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("conflict_matter_watch_matter_key").on(t.tenantId, t.matterId)]);
+
+// ---------------------------------------------------------------------------
+// c96 — importing the firm's existing client and matter history
+// ---------------------------------------------------------------------------
+
+/**
+ * One uploaded file (CSV first). Lifecycle: 'validated' (parsed and checked,
+ * nothing written to the index yet) → 'committed' (rows imported) or
+ * 'discarded'. The firm then confirms the import (settings
+ * historyImportConfirmedAt) before checks may come back clear.
+ */
+export const conflictImportBatches = pgTable("conflict_import_batches", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  filename: text("filename").notNull(),
+  /** 'csv' for now; other formats map onto the same rows. */
+  format: text("format").notNull().default("csv"),
+  status: text("status").notNull().default("validated"),
+  /** Column mapping used (source header → field). */
+  columnMap: jsonb("column_map").$type<Record<string, string>>().notNull().default({}),
+  totalRows: integer("total_rows").notNull().default(0),
+  validRows: integer("valid_rows").notNull().default(0),
+  errorRows: integer("error_rows").notNull().default(0),
+  /** Rows folded into another row of the same file (same person). */
+  duplicateRows: integer("duplicate_rows").notNull().default(0),
+  partiesCreated: integer("parties_created").notNull().default(0),
+  mattersCreated: integer("matters_created").notNull().default(0),
+  /** Suggestions queued against people already in the index (never auto-merged). */
+  mergeSuggestions: integer("merge_suggestions").notNull().default(0),
+  sha256: text("sha256").notNull(),
+  uploadedByUserId: uuid("uploaded_by_user_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  committedAt: timestamp("committed_at", { withTimezone: true }),
+  committedByUserId: uuid("committed_by_user_id").references(() => users.id),
+  discardedAt: timestamp("discarded_at", { withTimezone: true }),
+}, (t) => [
+  index("conflict_import_batches_tenant_idx").on(t.tenantId, t.createdAt),
+  check("conflict_import_batches_status_check", sql`${t.status} in ('validated','committed','discarded')`),
+  check("conflict_import_batches_format_check", sql`${t.format} in ('csv')`),
+]);
+
+/** One source row of an import, with its validation result and what it became. */
+export const conflictImportRows = pgTable("conflict_import_rows", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  batchId: uuid("batch_id").notNull().references(() => conflictImportBatches.id),
+  /** 1-based line in the file (header = line 1). */
+  lineNumber: integer("line_number").notNull(),
+  /** The parsed, validated row (ImportRecord in src/engines/conflict-check/historyImport.ts). */
+  record: jsonb("record").$type<Record<string, unknown>>().notNull(),
+  /** 'valid' | 'error' | 'duplicate' | 'imported' | 'failed'. */
+  status: text("status").notNull(),
+  errors: text("errors").array().notNull().default(sql`'{}'::text[]`),
+  warnings: text("warnings").array().notNull().default(sql`'{}'::text[]`),
+  /** Line this row was folded into (status 'duplicate'). */
+  duplicateOfLine: integer("duplicate_of_line"),
+  partyId: uuid("party_id").references(() => parties.id),
+}, (t) => [
+  index("conflict_import_rows_batch_idx").on(t.tenantId, t.batchId, t.lineNumber),
+  check("conflict_import_rows_status_check", sql`${t.status} in ('valid','error','duplicate','imported','failed')`),
+]);
+
+/**
+ * A matter or consultation from the firm's old system. Kept apart from
+ * `matters` (which drive live workflows) and searched alongside it: an
+ * imported involvement counts exactly like a live one in every check.
+ */
+export const importedMatters = pgTable("imported_matters", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  batchId: uuid("batch_id").notNull().references(() => conflictImportBatches.id),
+  /** The old system's matter number or reference (unique per firm when given). */
+  externalRef: text("external_ref").notNull(),
+  /** 'matter' (engaged) | 'consultation' (prospect who never engaged, incl. declined). */
+  kind: text("kind").notNull(),
+  title: text("title"),
+  practiceArea: text("practice_area"),
+  /** 'current' | 'former' | 'prospective'. */
+  status: text("status").notNull(),
+  openedOn: text("opened_on"),
+  closedOn: text("closed_on"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("imported_matters_ref_key").on(t.tenantId, t.externalRef),
+  check("imported_matters_kind_check", sql`${t.kind} in ('matter','consultation')`),
+  check("imported_matters_status_check", sql`${t.status} in ('current','former','prospective')`),
+]);
+
+/** A party's role in an imported matter or consultation. */
+export const importedInvolvements = pgTable("imported_involvements", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: uuid("tenant_id").notNull().references(() => firms.id),
+  importedMatterId: uuid("imported_matter_id").notNull().references(() => importedMatters.id),
+  partyId: uuid("party_id").notNull().references(() => parties.id),
+  /** An INDEX_ROLES value, e.g. 'client', 'former_client', 'opposing_party', 'prospective_client'. */
+  role: text("role").notNull(),
+  relationship: text("relationship"),
+  isAdverse: boolean("is_adverse"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("imported_involvements_key").on(t.tenantId, t.importedMatterId, t.partyId, t.role),
+  index("imported_involvements_party_idx").on(t.tenantId, t.partyId),
+]);
 
 // ---------------------------------------------------------------------------
 // MIGRATION NOTES for the integration step (hand-add to the generated SQL):
@@ -614,7 +783,9 @@ export const conflictSyncState = pgTable("conflict_sync_state", {
 //    conflict_waivers, conflict_screens, conflict_gates, lateral_checks,
 //    lateral_prior_matters, non_engagement_letters, conflict_exports,
 //    interest_disclosures, interest_disclosure_confirmations,
-//    conflict_sync_state.
+//    conflict_sync_state, party_match_keys, party_addresses,
+//    conflict_matter_watch, conflict_import_batches, conflict_import_rows,
+//    imported_matters, imported_involvements.
 // 2. GRANT SELECT, INSERT, UPDATE, DELETE ON all of the above TO app_runtime,
 //    EXCEPT:
 //    - conflict_decisions is append-only (c59 rule 4):
