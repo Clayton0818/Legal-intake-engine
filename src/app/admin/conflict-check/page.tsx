@@ -10,6 +10,7 @@ import { gateStatus } from "@/compliance/approvals";
 import { RULE_GATES, VENDOR_GATES } from "@/compliance/gates";
 import { ensureServerApprovals } from "@/compliance/server";
 import { CONFLICT_GATE_KEYS } from "@/engines/conflict-check/gates";
+import { IMPORT_FIELDS, IMPORT_RECORD_TYPES } from "@/engines/conflict-check/historyImport";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,28 @@ export default async function ConflictCheckAdminPage() {
           </tbody>
         </table>
       </div>
+      <section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        <h2 className="font-semibold text-slate-900">History import (before checks go live)</h2>
+        <p className="mt-1">
+          Until the firm&apos;s past clients, matters and declined consultations are imported and a conflicts attorney confirms the
+          import, no check can come back clear.
+        </p>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>
+            Download the <a className="text-sky-700 underline" href="/api/conflict-check/imports/template">CSV template</a> or export from
+            the old system. Columns recognised: <span className="font-mono text-xs">{IMPORT_FIELDS.join(", ")}</span>.
+          </li>
+          <li>
+            Upload it (<code>POST /api/conflict-check/imports</code>) to see what will be imported and which lines fail, and why.
+            Record types: <span className="font-mono text-xs">{IMPORT_RECORD_TYPES.join(", ")}</span>.
+          </li>
+          <li>Commit the import (<code>POST /api/conflict-check/imports/&lt;id&gt;</code> with action commit). Look-alikes become merge suggestions.</li>
+          <li>
+            Confirm the history is complete (<code>POST /api/conflict-check/settings</code> with action confirm_history_import), by a
+            conflicts attorney.
+          </li>
+        </ol>
+      </section>
       <p className="text-xs text-slate-500">
         Reviewers record approvals with <code>npm run compliance -- approve --gate &lt;key&gt; --reviewer &lt;kind&gt; --by &quot;&lt;name&gt;&quot;</code>.
       </p>

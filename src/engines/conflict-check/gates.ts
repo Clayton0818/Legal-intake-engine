@@ -1,4 +1,4 @@
-// Approval gates owned by the Conflict-check engine (c56, c59, c61, c62, c63, c97).
+// Approval gates owned by the Conflict-check engine (c3, c56, c57, c58, c59, c61, c62, c63, c96, c97).
 //
 // Nothing here is approved. Until a reviewer signs off (npm run compliance --
 // approve …), client-facing wording renders as a visible
@@ -7,7 +7,8 @@
 // approved wording.
 //
 // Shared gates reused (never redefined here):
-//   rules.conflicts          (RULE_GATES.conflictRules)   — the c55 rule table: waivability, definite vs possible
+//   rules.conflicts          (RULE_GATES.conflictRules)   — the c55 rule table AND applying the c3 role matrix:
+//                                                           waivability, definite vs possible
 //   rules.retention_periods  (RULE_GATES.retentionPeriods) — purge of declined-inquiry narrative (c62 / c2)
 //   vendor.esignature        (VENDOR_GATES.esignature)    — sending waivers for signature (c59)
 //   vendor.email             (via src/core/notify.ts)     — every email this engine queues
@@ -29,6 +30,18 @@ export const CONFLICT_COPY_GATES = {
     draft:
       "Thank you for your patience. Before {firmName} can take the next step, we need to complete an internal review. " +
       "We will be in touch as soon as it is finished.",
+  }),
+  /** c3 — what the caller is told when intake stops on a definite result: a neutral referral, never the reason. */
+  definiteReferral: defineGate({
+    key: "copy.conflict-check.definite_referral",
+    cardIds: ["c3"],
+    reviewers: ["attorney"],
+    description:
+      "Neutral message when intake stops on a definite result: the firm cannot help with this matter, plus a referral route (never mentions a conflict, another person, or the merits)",
+    draft:
+      "Thank you for contacting {firmName}. We are not able to help you with this matter. " +
+      "To find another lawyer, you can contact {referralName} ({referralContact}). " +
+      "Legal matters can be affected by time limits, so please do not delay.",
   }),
   /** c59 §4.4.3 — minimal email/in-app notice that a document needs the client's signature. */
   waiverSignatureRequest: defineGate({

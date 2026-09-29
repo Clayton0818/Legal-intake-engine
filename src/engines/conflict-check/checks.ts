@@ -1,10 +1,11 @@
 // Running a conflict check, opening the attorney's decision task (c59
 // §4.1), and maintaining the conflict gate (c59 §4.5).
 //
-// The check itself is a conservative stand-in for c3 (core check) + c57
-// (matching): any hit, any unnamed party, or a firm whose history import is
-// not confirmed produces 'possible', and 'definite' only ever comes from the
-// attorney-approved rule table. Nothing here clears a conflict.
+// The check is c3 (core check, coreCheck.ts) over c57 (near-miss matching,
+// matching.ts): any hit, any unnamed party, or a firm whose history import
+// (c96) is not confirmed produces 'possible'; 'definite' only ever comes from
+// the attorney-approved rule table or role matrix (`rules.conflicts`).
+// Nothing here clears a conflict.
 
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { conflictChecks, conflictDecisions, conflictGates, conflictScreens, conflictWaivers } from "@/db/tables/conflict-check";
@@ -29,6 +30,7 @@ import { CONFLICT_COPY_GATES } from "./gates";
 import { expandOrgLinkHits, matchIndex } from "./matching";
 import { loadIndexEntries, loadOrgLinks } from "./partyIndex";
 import { applyRuleTable, DRAFT_RULE_TABLE, UNAPPLIED_ASSESSMENT, type RuleAssessment } from "./ruleTable";
+import { evaluateRoleMatrix, intakeDirective, type IntakeDirective, type RoleEvaluation } from "./coreCheck";
 import { ENGINE, readConflictSettings } from "./settings";
 import type { CheckTrigger, ConflictHit, Decision, GateSubject, IndexSourceType, SearchedName } from "./types";
 
@@ -99,6 +101,8 @@ export interface RunCheckInput {
 export interface RunCheckResult {
   check: ConflictCheckRow;
   gate: GateResult | null;
+  /** c3: what the intake flow does next (proceed / pause and escalate / stop with a neutral referral). */
+  directive: IntakeDirective;
 }
 
 export async function runConflictCheck(tx: TenantTx, input: RunCheckInput): Promise<RunCheckResult> {
@@ -147,6 +151,17 @@ export async function runConflictCheck(tx: TenantTx, input: RunCheckInput): Prom
     intakeSessionId: subject?.type === "intake_session" ? subject.id : null,
     actor,
   });
+  // c3: evaluate hits against the role being sought. Always recorded for the
+  // reviewer; it can only make the result 'definite' when rules.conflicts is
+  // approved (the same approval that lets the rule table apply).
+  const roleEvaluation: RoleEvaluation = evaluateRoleMatrix({
+    hits,
+    roleSought: input.roleSought,
+    matrix: settings.roleMatrix,
+    sources: settings.conflictSources,
+    definiteMinStrength: settings.definiteMinStrength,
+    applied: assessment.applied,
+  });
   const { outcome, reasons } = classifyOutcome({
     hits,
     searched: input.searched,
@@ -154,6 +169,7 @@ export async function runConflictCheck(tx: TenantTx, input: RunCheckInput): Prom
     historyImportConfirmed: settings.historyImportConfirmedAt !== null,
     indexWriteFailed: input.indexWriteFailed,
     assessment,
+    roleEvaluation,
   });
 
   const [check] = await tx
@@ -174,6 +190,7 @@ export async function runConflictCheck(tx: TenantTx, input: RunCheckInput): Prom
       outcome,
       outcomeReasons: reasons,
       ruleTableApplied: assessment.applied,
+      roleEvaluation: roleEvaluation as unknown as Record<string, unknown>,
       status: outcome === "clear" ? "not_required" : "open",
       createdAt: now,
       closedAt: outcome === "clear" ? now : null,
@@ -190,14 +207,45 @@ export async function runConflictCheck(tx: TenantTx, input: RunCheckInput): Prom
     intakeSessionId: check!.intakeSessionId,
     actor,
     // Counts only: names and hit details stay on the restricted check record.
-    payload: { trigger: input.trigger, outcome, reasons, hitCount: hits.length, searchedCount: input.searched.length },
+    payload: {
+      trigger: input.trigger,
+      outcome,
+      reasons,
+      hitCount: hits.length,
+      searchedCount: input.searched.length,
+      roleSought: roleEvaluation.roleSought,
+      roleFindings: roleEvaluation.findings.length,
+      roleMatrixApplied: roleEvaluation.applied,
+    },
   });
 
   let row = check!;
   if (outcome !== "clear") row = await openDecisionTask(tx, row, { now, firmSettings });
 
   const gate = await refreshGatesForCheck(tx, row, now);
-  return { check: row, gate };
+  const directive = intakeDirective(outcome, {
+    pendingCopyKey: CONFLICT_COPY_GATES.pendingReview.key,
+    definiteCopyKey: CONFLICT_COPY_GATES.definiteReferral.key,
+    referral: settings.referralSources.find((r) => !r.practiceArea) ?? settings.referralSources[0] ?? null,
+    referralDestination: settings.definiteReferralDestination,
+  });
+  return { check: row, gate, directive };
+}
+
+/**
+ * What the caller is told for a directive — approval-gated wording only
+ * (a visible placeholder until an attorney approves it), never a name, the
+ * other matter, or the word 'conflict'.
+ */
+export async function directiveMessage(tx: TenantTx, tenantId: string, directive: IntakeDirective): Promise<string | null> {
+  if (!directive.clientCopyKey) return null;
+  const [firm] = await tx.select({ name: firms.name }).from(firms).where(eq(firms.id, tenantId)).limit(1);
+  return legalCopy(directive.clientCopyKey, {
+    firmName: firm?.name ?? "the firm",
+    // Firms set their referral sources in settings; this fallback names no organisation.
+    referralName: directive.referral?.name ?? "a lawyer referral service",
+    referralContact: directive.referral?.contact ?? "your local bar association",
+  });
 }
 
 /** Subjects whose gate this check affects. */
