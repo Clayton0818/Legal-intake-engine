@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   return conflictRoute(
     "POST /api/conflict-check/recheck",
     req,
-    ({ tx, tenantId }) => runPeriodicRecheck(tx, tenantId, new Date()),
+    ({ tx, tenantId }) => runPeriodicRecheck(tx, tenantId, new Date(), { queueNext: false }),
     { capability: "index.edit" }
   );
 }

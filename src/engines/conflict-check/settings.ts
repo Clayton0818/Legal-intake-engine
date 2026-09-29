@@ -4,6 +4,7 @@
 // BUSINESS hours unless the name says otherwise (founder decision).
 
 import { engineSetting, type FirmSettings } from "@/core";
+import { BARRING_CONDITIONS, CONFLICT_SOURCES, DEFAULT_CONFLICT_SOURCES, DEFAULT_ROLE_MATRIX, type ConflictSource, type RoleMatrix } from "./coreCheck";
 
 export const ENGINE = "conflict-check" as const;
 
@@ -55,6 +56,18 @@ export interface ConflictSettings {
   exportLinkHours: number;
   /** c97 rule 5: re-confirmation interval in months (default 12). */
   interestReconfirmMonths: number;
+  /** c3: firm-config `role_matrix` (which prior contacts bar which roles). Applied only under `rules.conflicts`. */
+  roleMatrix: RoleMatrix;
+  /** c3: firm-config `conflict_sources`. */
+  conflictSources: ConflictSource[];
+  /** c3: minimum match strength for a finding to make a check 'definite' (default 0.9; weaker hits stay 'possible'). */
+  definiteMinStrength: number;
+  /** c3: referral destination after a definite result (firm-config `destination`). */
+  definiteReferralDestination: string;
+  /** c58 (5): how often open matters are re-checked against newly indexed parties, in REAL hours (default 24). */
+  periodicRecheckIntervalHours: number;
+  /** c58 (3): run a check automatically when a closed matter is reopened (default on). */
+  recheckOnReopen: boolean;
 }
 
 export const DEFAULT_CONFLICT_SETTINGS: Readonly<ConflictSettings> = Object.freeze({
@@ -82,6 +95,12 @@ export const DEFAULT_CONFLICT_SETTINGS: Readonly<ConflictSettings> = Object.free
   defaultExportRedaction: "summary",
   exportLinkHours: 24,
   interestReconfirmMonths: 12,
+  roleMatrix: DEFAULT_ROLE_MATRIX as RoleMatrix,
+  conflictSources: [...DEFAULT_CONFLICT_SOURCES],
+  definiteMinStrength: 0.9,
+  definiteReferralDestination: "state_bar_referral_service",
+  periodicRecheckIntervalHours: 24,
+  recheckOnReopen: true,
 });
 
 export const MAX_EXPORT_LINK_HOURS = 168;
@@ -101,7 +120,32 @@ export function readConflictSettings(settings: Pick<FirmSettings, "engineSetting
     // Conflict declines ALWAYS need individual lawyer approval (c62 rule 4), whatever the firm sets.
     letterAutoSendTypes: (Array.isArray(s.letterAutoSendTypes) ? s.letterAutoSendTypes : []).filter((t) => t !== "conflict"),
     defaultExportRedaction: s.defaultExportRedaction === "full" ? "full" : "summary",
+    roleMatrix: isRoleMatrix(s.roleMatrix) ? s.roleMatrix : (DEFAULT_ROLE_MATRIX as RoleMatrix),
+    conflictSources: isSourceList(s.conflictSources) ? s.conflictSources : [...DEFAULT_CONFLICT_SOURCES],
+    // Never below 0.6: 'definite' needs a confident identity match.
+    definiteMinStrength:
+      typeof s.definiteMinStrength === "number" && s.definiteMinStrength >= 0.6 && s.definiteMinStrength <= 1 ? s.definiteMinStrength : 0.9,
+    periodicRecheckIntervalHours: clampInt(s.periodicRecheckIntervalHours, 1, 24 * 31, 24),
   };
+}
+
+/** A well-formed role matrix: every row lists only known barring conditions. Pure. */
+export function isRoleMatrix(value: unknown): value is RoleMatrix {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const rows = Object.entries(value as Record<string, unknown>);
+  if (rows.length === 0) return false;
+  return rows.every(
+    ([key, row]) =>
+      /^[a-z_]{2,40}$/.test(key) &&
+      !!row &&
+      typeof row === "object" &&
+      Array.isArray((row as { barred_by?: unknown }).barred_by) &&
+      ((row as { barred_by: unknown[] }).barred_by).every((c) => (BARRING_CONDITIONS as readonly unknown[]).includes(c))
+  );
+}
+
+function isSourceList(value: unknown): value is ConflictSource[] {
+  return Array.isArray(value) && value.length > 0 && value.every((v) => (CONFLICT_SOURCES as readonly unknown[]).includes(v));
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -109,7 +153,7 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(max, Math.max(min, n));
 }
 
-type SettingKind = "hours" | "int" | "bool" | "stringList" | "uuidList" | "referrals" | "redaction";
+type SettingKind = "hours" | "int" | "bool" | "stringList" | "uuidList" | "referrals" | "redaction" | "roleMatrix" | "sources" | "strength" | "text";
 
 const SETTING_KINDS: Readonly<Record<Exclude<keyof ConflictSettings, "historyImportConfirmedAt">, SettingKind>> = {
   decisionDueBusinessHoursIntake: "hours",
@@ -135,6 +179,12 @@ const SETTING_KINDS: Readonly<Record<Exclude<keyof ConflictSettings, "historyImp
   defaultExportRedaction: "redaction",
   exportLinkHours: "int",
   interestReconfirmMonths: "int",
+  roleMatrix: "roleMatrix",
+  conflictSources: "sources",
+  definiteMinStrength: "strength",
+  definiteReferralDestination: "text",
+  periodicRecheckIntervalHours: "hours",
+  recheckOnReopen: "bool",
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -190,6 +240,22 @@ export function validateConflictSettingsPatch(patch: Record<string, unknown>): {
         ) {
           values[key] = value;
         } else bad();
+        break;
+      case "roleMatrix":
+        if (isRoleMatrix(value)) values[key] = value;
+        else errors.push(`'${key}' must map each role to { barred_by: [...] } using: ${BARRING_CONDITIONS.join(", ")}.`);
+        break;
+      case "sources":
+        if (isSourceList(value)) values[key] = value;
+        else errors.push(`'${key}' may only list: ${CONFLICT_SOURCES.join(", ")}.`);
+        break;
+      case "strength":
+        if (typeof value === "number" && value >= 0.6 && value <= 1) values[key] = value;
+        else errors.push(`'${key}' must be between 0.6 and 1.`);
+        break;
+      case "text":
+        if (typeof value === "string" && /^[a-z0-9_]{2,60}$/.test(value)) values[key] = value;
+        else bad();
         break;
       case "redaction":
         if (value === "full" || value === "summary") values[key] = value;
