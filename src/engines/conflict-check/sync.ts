@@ -357,18 +357,34 @@ export async function checkMatter(
   input: { tenantId: string; matterId: string; trigger?: "manual" | "reopened" | "periodic"; access: ConflictAccess; now?: Date }
 ): Promise<RunCheckResult> {
   assertCan(input.access, "index.edit");
+  const result = await runMatterCheck(tx, {
+    tenantId: input.tenantId,
+    matterId: input.matterId,
+    trigger: input.trigger ?? "manual",
+    by: { type: "user", userId: input.access.userId },
+    now: input.now,
+  });
+  if (!result) throw new ConflictError("This matter has no current parties to check.", 422);
+  return result;
+}
+
+/** Check every current party of a matter (system triggers, c58). Null when the matter has no parties. */
+export async function runMatterCheck(
+  tx: TenantTx,
+  input: { tenantId: string; matterId: string; trigger: CheckTrigger; by?: Actor; now?: Date }
+): Promise<RunCheckResult | null> {
   const rows = await tx
     .select({ party: parties, role: matterParties.role })
     .from(matterParties)
     .innerJoin(parties, eq(parties.id, matterParties.partyId))
     .where(and(eq(matterParties.tenantId, input.tenantId), eq(matterParties.matterId, input.matterId), isNull(matterParties.endedAt)));
-  if (rows.length === 0) throw new ConflictError("This matter has no current parties to check.", 422);
+  if (rows.length === 0) return null;
   return runConflictCheck(tx, {
     tenantId: input.tenantId,
-    trigger: input.trigger ?? "manual",
+    trigger: input.trigger,
     subject: { type: "matter", id: input.matterId },
     searched: rows.flatMap((r) => searchedNamesForParty(r.party, r.role)),
-    triggeredBy: { type: "user", userId: input.access.userId },
+    triggeredBy: input.by ?? SYSTEM_ACTOR,
     now: input.now,
   });
 }
