@@ -38,6 +38,8 @@ export interface SearchedName {
   dateOfBirth?: string | null;
   email?: string | null;
   phone?: string | null;
+  /** Postal address, when known (c57: separates two people with the same name). */
+  address?: string | null;
 }
 
 /** Where an index entry came from. Lateral lists and lawyer interests are stored apart from `parties`. */
@@ -53,6 +55,10 @@ export interface Involvement {
   status: "current" | "former" | "prospective";
   isAdverse?: boolean | null;
   stage?: string | null;
+  /** c96: history imported from the firm's old system (id = imported_matters.id). */
+  imported?: boolean;
+  /** The old system's matter reference, for imported involvements. */
+  externalRef?: string | null;
 }
 
 /** A searchable entry assembled from the party index, a lateral list or a disclosure list. */
@@ -69,6 +75,8 @@ export interface IndexEntry {
   dateOfBirth?: string | null;
   emails?: readonly string[];
   phones?: readonly string[];
+  /** Normalised postal addresses (see nameRules.normalizeAddress). */
+  addresses?: readonly string[];
   involvements: readonly Involvement[];
   /** Lateral hire or disclosing lawyer (lateral_list / interest entries). Conflicts role only. */
   ownerUserId?: string | null;
@@ -88,7 +96,35 @@ export type MatchKind =
   | "email"
   | "phone"
   | "dob_name"
+  | "phonetic"
+  | "name_change"
+  | "address"
   | "org_link";
+
+/** c57: one signal that contributed to (or weakened) a hit, shown to the reviewer. */
+export interface MatchEvidence {
+  signal:
+    | "name"
+    | "name_variant"
+    | "nickname"
+    | "phonetic"
+    | "spelling"
+    | "initial"
+    | "partial_name"
+    | "email"
+    | "phone"
+    | "date_of_birth"
+    | "date_of_birth_differs"
+    | "address"
+    | "org_link";
+  /** Plain-language explanation, e.g. "‘Bob’ is a common nickname for ‘Robert’". */
+  detail: string;
+  /** Effect on strength: positive supports the match, negative weakens it. */
+  weight: number;
+}
+
+/** How strongly a hit matched (c57): strong ≥ 0.85, likely ≥ 0.6, otherwise weak. */
+export type MatchBand = "strong" | "likely" | "weak";
 
 /** One hit, stored on the check (internal; conflicts role only). */
 export interface ConflictHit {
@@ -109,6 +145,9 @@ export interface ConflictHit {
   note: string | null;
   /** Set when the hit was found through a parent/subsidiary/affiliate link. */
   viaOrgLinkFromPartyId?: string | null;
+  /** c57: what matched and how strongly (absent on hits stored before c57). */
+  evidence?: MatchEvidence[];
+  band?: MatchBand;
 }
 
 export const DECISIONS = ["cleared", "proceed_with_consent", "proceed_with_screen", "declined"] as const;

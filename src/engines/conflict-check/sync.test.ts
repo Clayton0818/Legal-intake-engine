@@ -72,6 +72,6 @@ describe("worker module", () => {
     expect(reg.hooks.map((h) => h.name)).toEqual(
       expect.arrayContaining(["conflict-check.index_sync", "conflict-check.waiver_timers", "conflict-check.lateral_start_dates", "conflict-check.ensure_maintenance"])
     );
-    expect([...reg.handlers.keys()].sort()).toEqual(["conflict-check.daily_maintenance", "conflict-check.export_generate"]);
+    expect([...reg.handlers.keys()].sort()).toEqual(["conflict-check.daily_maintenance", "conflict-check.export_generate", "conflict-check.periodic_recheck"]);
   });
 });

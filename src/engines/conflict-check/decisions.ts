@@ -6,6 +6,7 @@
 
 import type { ConflictHit, ConflictOutcome, Decision, GateClosedReason, GateState, SearchedName, CheckTrigger } from "./types";
 import type { RuleAssessment } from "./ruleTable";
+import type { RoleEvaluation } from "./coreCheck";
 
 // ---------------------------------------------------------------------------
 // Outcome (c3 / c56 rules 7 and 9)
@@ -22,6 +23,8 @@ export interface OutcomeInput {
   indexWriteFailed?: boolean;
   /** Only an APPLIED rule table (rules.conflicts approved) can make a result 'definite'. */
   assessment: RuleAssessment;
+  /** c3 role-matrix evaluation; only an APPLIED one (rules.conflicts approved) can make a result 'definite'. */
+  roleEvaluation?: RoleEvaluation | null;
 }
 
 export function classifyOutcome(input: OutcomeInput): { outcome: ConflictOutcome; reasons: OutcomeReason[] } {
@@ -31,7 +34,9 @@ export function classifyOutcome(input: OutcomeInput): { outcome: ConflictOutcome
   if (!input.historyImportConfirmed) reasons.push("history_not_loaded");
   if (input.indexWriteFailed) reasons.push("index_write_failed");
   if (reasons.length === 0) return { outcome: "clear", reasons };
-  const definite = input.hits.length > 0 && input.assessment.applied && input.assessment.definite;
+  const byTable = input.assessment.applied && input.assessment.definite;
+  const byRole = !!input.roleEvaluation?.applied && input.roleEvaluation.barred;
+  const definite = input.hits.length > 0 && (byTable || byRole);
   return { outcome: definite ? "definite" : "possible", reasons };
 }
 

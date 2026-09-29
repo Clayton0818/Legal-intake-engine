@@ -19,7 +19,7 @@ describe("conflict-check approval gates", () => {
   it("defines namespaced gates tied to this group's cards", () => {
     for (const key of CONFLICT_GATE_KEYS) {
       expect(key).toMatch(/^(copy|rules)\.conflict-check\./);
-      expect(getGate(key).cardIds.every((c) => ["c56", "c59", "c61", "c62", "c63", "c97"].includes(c))).toBe(true);
+      expect(getGate(key).cardIds.every((c) => ["c3", "c56", "c57", "c58", "c59", "c61", "c62", "c63", "c96", "c97"].includes(c))).toBe(true);
     }
   });
 
