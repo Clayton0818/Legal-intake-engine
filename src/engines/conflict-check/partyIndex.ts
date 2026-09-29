@@ -15,6 +15,10 @@ import {
   interestDisclosures,
   lateralChecks,
   lateralPriorMatters,
+  importedInvolvements,
+  importedMatters,
+  partyAddresses,
+  partyMatchKeys,
   partyMergeSuggestions,
   partyMerges,
   partyNameVariants,
@@ -28,6 +32,7 @@ import { assertCan, type ConflictAccess } from "./access";
 import { findDuplicatePairs, pairKey, type DedupeCandidate } from "./dedupe";
 import { CONFLICT_RULE_GATES } from "./gates";
 import { matchIndex, tokens, type OrgLink } from "./matching";
+import { matchKeysForName, normalizeAddress } from "./nameRules";
 import { ENGINE } from "./settings";
 import { ConflictError } from "./util";
 import type { IndexEntry, IndexRole, IndexSourceType, Involvement, NameSource, NameType } from "./types";
@@ -52,6 +57,8 @@ export interface IndexPartyInput {
   email?: string | null;
   phone?: string | null;
   variants?: ReadonlyArray<{ name: string; type: NameType }>;
+  /** Postal address (secondary identifier, c57). */
+  address?: string | null;
   source: NameSource;
   /** Reuse only a record already selected in THIS intake session (c56 §4.1.3); never auto-merge otherwise. */
   reusePartyId?: string | null;
@@ -110,7 +117,9 @@ export async function indexParty(tx: TenantTx, input: IndexPartyInput): Promise<
       .returning({ id: parties.id });
     partyId = row!.id;
     created = true;
+    await addMatchKeys(tx, input.tenantId, partyId, [normalizeName(name)]);
   }
+  if (input.address?.trim()) await addPartyAddress(tx, input.tenantId, partyId, input.address, input.source);
 
   for (const v of input.variants ?? []) {
     await addNameVariantRow(tx, input.tenantId, partyId, v.name, v.type, input.source, actor);
@@ -161,6 +170,55 @@ export async function indexParty(tx: TenantTx, input: IndexPartyInput): Promise<
     payload: { source: input.source, linkType: input.link?.type ?? null, role: input.link?.role ?? null, suggestions },
   });
   return { partyId, linkId, created, suggestions };
+}
+
+/** Store c57 match keys for some normalised names of a party (idempotent). */
+export async function addMatchKeys(tx: TenantTx, tenantId: string, partyId: string, normalizedNames: readonly string[]): Promise<number> {
+  const keys = [...new Set(normalizedNames.flatMap((n) => matchKeysForName(n)))];
+  if (keys.length === 0) return 0;
+  const rows = await tx
+    .insert(partyMatchKeys)
+    .values(keys.map((key) => ({ tenantId, partyId, key })))
+    .onConflictDoNothing()
+    .returning({ id: partyMatchKeys.id });
+  return rows.length;
+}
+
+/** Record a postal address for a party (idempotent). */
+export async function addPartyAddress(tx: TenantTx, tenantId: string, partyId: string, address: string, source: NameSource): Promise<void> {
+  const normalized = normalizeAddress(address);
+  if (!normalized) return;
+  await tx
+    .insert(partyAddresses)
+    .values({ tenantId, partyId, address: address.trim(), normalizedAddress: normalized, source })
+    .onConflictDoNothing();
+}
+
+/**
+ * Build match keys for parties written by other engines (keyset on
+ * parties.updated_at, id). Called from the worker; derived data only.
+ */
+export async function backfillMatchKeys(
+  tx: TenantTx,
+  tenantId: string,
+  cursor: { at: Date | null; id: string | null },
+  limit = 500
+): Promise<{ processed: number; keys: number; cursor: { at: Date | null; id: string | null } }> {
+  const after = cursor.at
+    ? cursor.id
+      ? or(sql`${parties.updatedAt} > ${cursor.at}`, and(eq(parties.updatedAt, cursor.at), sql`${parties.id} > ${cursor.id}`))
+      : sql`${parties.updatedAt} > ${cursor.at}`
+    : undefined;
+  const rows = await tx
+    .select({ id: parties.id, normalizedName: parties.normalizedName, normalizedAliases: parties.normalizedAliases, updatedAt: parties.updatedAt })
+    .from(parties)
+    .where(and(eq(parties.tenantId, tenantId), after))
+    .orderBy(parties.updatedAt, parties.id)
+    .limit(limit);
+  let keys = 0;
+  for (const r of rows) keys += await addMatchKeys(tx, tenantId, r.id, [r.normalizedName, ...r.normalizedAliases]);
+  const last = rows.at(-1);
+  return { processed: rows.length, keys, cursor: last ? { at: last.updatedAt, id: last.id } : cursor };
 }
 
 /** A party the caller will not (or cannot) name: the check for this inquiry can never be clear (c56 rule 7). */
@@ -219,6 +277,7 @@ async function addNameVariantRow(
     .onConflictDoNothing()
     .returning({ id: partyNameVariants.id });
   if (inserted.length === 0) return false;
+  await addMatchKeys(tx, tenantId, partyId, [normalized]);
   // Keep the untyped mirror on `parties` in sync for engines that only read that table.
   await tx
     .update(parties)
@@ -334,7 +393,7 @@ export async function activeMergeMap(tx: TenantTx, tenantId: string): Promise<Ma
 }
 
 /** SQL prefilter: parties sharing a 3-letter fragment of any searched token, or an email/phone. */
-function candidateFilter(searchTokens: string[], emails: string[], phones: string[]): SQL | undefined {
+function candidateFilter(searchTokens: string[], emails: string[], phones: string[], matchKeys: string[] = []): SQL | undefined {
   const conds: SQL[] = [];
   for (const t of searchTokens) {
     const frag = t.length > 3 ? [t.slice(0, 3), t.slice(-3)] : [t];
@@ -346,6 +405,15 @@ function candidateFilter(searchTokens: string[], emails: string[], phones: strin
         sql`exists (select 1 from party_name_variants v where v.party_id = ${parties.id} and v.normalized_name like ${like})`
       );
     }
+  }
+  if (matchKeys.length > 0) {
+    // c57: phonetic / nickname keys catch near-misses the fragment filter misses.
+    conds.push(
+      sql`exists (select 1 from party_match_keys k where k.party_id = ${parties.id} and k.key in (${sql.join(
+        matchKeys.map((k) => sql`${k}`),
+        sql`, `
+      )}))`
+    );
   }
   for (const e of emails) conds.push(sql`lower(${parties.email}) = ${e}`, sql`${e} = any(${parties.emails})`);
   for (const p of phones) conds.push(sql`regexp_replace(coalesce(${parties.phone}, ''), '\\D', '', 'g') like ${`%${p}`}`);
@@ -375,7 +443,8 @@ export async function loadIndexEntries(tx: TenantTx, input: LoadEntriesInput): P
   const entries: IndexEntry[] = [];
 
   if (sources.has("party")) {
-    const filter = candidateFilter(searchTokens, emails, phones);
+    const matchKeys = [...new Set(input.names.flatMap((n) => matchKeysForName(normalizeName(n))))];
+    const filter = candidateFilter(searchTokens, emails, phones, matchKeys);
     const extra = input.extraPartyIds && input.extraPartyIds.length > 0 ? inArray(parties.id, [...input.extraPartyIds]) : undefined;
     const where = filter || extra ? or(...[filter, extra].filter((x): x is SQL => !!x)) : undefined;
     const partyRows = where
@@ -459,7 +528,7 @@ async function buildPartyEntries(tx: TenantTx, tenantId: string, partyRows: Part
   }
   const allIds = partyRows.map((p) => p.id);
 
-  const [variants, matterLinks, inquiryLinks] = await Promise.all([
+  const [variants, matterLinks, inquiryLinks, addressRows, importedLinks] = await Promise.all([
     tx
       .select({ partyId: partyNameVariants.partyId, normalized: partyNameVariants.normalizedName, type: partyNameVariants.nameType })
       .from(partyNameVariants)
@@ -487,6 +556,25 @@ async function buildPartyEntries(tx: TenantTx, tenantId: string, partyRows: Part
       })
       .from(inquiryParties)
       .where(and(eq(inquiryParties.tenantId, tenantId), inArray(inquiryParties.partyId, allIds))),
+    tx
+      .select({ partyId: partyAddresses.partyId, normalized: partyAddresses.normalizedAddress })
+      .from(partyAddresses)
+      .where(and(eq(partyAddresses.tenantId, tenantId), inArray(partyAddresses.partyId, allIds))),
+    // c96: history imported from the firm's old system counts like live history.
+    tx
+      .select({
+        partyId: importedInvolvements.partyId,
+        importedMatterId: importedInvolvements.importedMatterId,
+        role: importedInvolvements.role,
+        relationship: importedInvolvements.relationship,
+        isAdverse: importedInvolvements.isAdverse,
+        kind: importedMatters.kind,
+        status: importedMatters.status,
+        externalRef: importedMatters.externalRef,
+      })
+      .from(importedInvolvements)
+      .innerJoin(importedMatters, eq(importedMatters.id, importedInvolvements.importedMatterId))
+      .where(and(eq(importedInvolvements.tenantId, tenantId), inArray(importedInvolvements.partyId, allIds))),
   ]);
 
   const bySurvivor = new Map<string, IndexEntry & { names: Array<{ normalized: string; type: string }>; involvements: Involvement[] }>();
@@ -530,6 +618,23 @@ async function buildPartyEntries(tx: TenantTx, tenantId: string, partyRows: Part
         isAdverse: m.isAdverse,
         stage: m.stage,
         status: matterStatus(m.stage, m.closedAt, m.endedAt),
+      });
+    }
+    for (const a of addressRows.filter((x) => x.partyId === p.id)) {
+      const list = (entry.addresses ?? []) as string[];
+      if (!list.includes(a.normalized)) list.push(a.normalized);
+      entry.addresses = list;
+    }
+    for (const m of importedLinks.filter((l) => l.partyId === p.id)) {
+      entry.involvements.push({
+        kind: m.kind === "consultation" ? "inquiry" : "matter",
+        id: m.importedMatterId,
+        role: m.role,
+        relationship: m.relationship,
+        isAdverse: m.isAdverse,
+        status: m.status as Involvement["status"],
+        imported: true,
+        externalRef: m.externalRef,
       });
     }
     for (const q of inquiryLinks.filter((l) => l.partyId === p.id)) {
@@ -924,4 +1029,3 @@ export async function inquiryPartiesFor(tx: TenantTx, tenantId: string, intakeSe
     .from(inquiryParties)
     .where(and(eq(inquiryParties.tenantId, tenantId), eq(inquiryParties.intakeSessionId, intakeSessionId)));
 }
-
