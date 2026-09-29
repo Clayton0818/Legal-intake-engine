@@ -40,8 +40,8 @@ export function hit(over: Partial<ConflictHit> = {}): ConflictHit {
     strength: 1,
     reasons: ["Same name"],
     involvements: [matterInv("m1", "client", "current")],
+    ownerUserId: null,
+    note: null,
     ...over,
-    ownerUserId: over.ownerUserId ?? null,
-    note: over.note ?? null,
   };
 }
