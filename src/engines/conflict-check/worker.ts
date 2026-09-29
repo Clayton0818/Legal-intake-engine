@@ -7,6 +7,8 @@ import { flagLateStartDates } from "./lateralService";
 import { EXPORT_TASK_TYPE, generateExport } from "./logService";
 import { ENGINE } from "./settings";
 import { syncMatterParties } from "./sync";
+import { backfillMatchKeysForTenant } from "./matchKeysService";
+import { detectReopenedMatters, ensurePeriodicRecheckQueued, PERIODIC_RECHECK_TASK_TYPE, runPeriodicRecheck } from "./triggers";
 import { ensureMaintenanceQueued, MAINTENANCE_TASK_TYPE, runDailyMaintenance, runWaiverTimers } from "./timers";
 
 export const worker: EngineWorkerModule = {
@@ -16,6 +18,24 @@ export const worker: EngineWorkerModule = {
       name: "conflict-check.index_sync",
       engine: ENGINE,
       run: async ({ tx, tenantId, now }) => ({ ...(await syncMatterParties(tx, tenantId, now)) }),
+    },
+    {
+      // c57: phonetic/nickname match keys for parties written by other engines.
+      name: "conflict-check.match_keys",
+      engine: ENGINE,
+      run: async ({ tx, tenantId }) => ({ ...(await backfillMatchKeysForTenant(tx, tenantId)) }),
+    },
+    {
+      // c58 (3): a closed matter that is reopened is checked again.
+      name: "conflict-check.reopened_matters",
+      engine: ENGINE,
+      run: async ({ tx, tenantId, now }) => ({ ...(await detectReopenedMatters(tx, tenantId, now)) }),
+    },
+    {
+      // c58 (5): keep one periodic re-check queued per firm.
+      name: "conflict-check.ensure_periodic_recheck",
+      engine: ENGINE,
+      run: async ({ tx, tenantId, now }) => ({ queued: await ensurePeriodicRecheckQueued(tx, tenantId, now) }),
     },
     {
       // c59 §4.4: waiver reminders and the outer limit (business hours).
@@ -40,6 +60,10 @@ export const worker: EngineWorkerModule = {
     [EXPORT_TASK_TYPE]: async ({ tx, tenantId, task, now }) => {
       const exportId = (task.payload as { exportId?: unknown }).exportId;
       if (typeof exportId === "string") await generateExport(tx, tenantId, exportId, now);
+    },
+    // c58 (5): open matters re-checked against newly indexed parties.
+    [PERIODIC_RECHECK_TASK_TYPE]: async ({ tx, tenantId, now }) => {
+      await runPeriodicRecheck(tx, tenantId, now);
     },
     [MAINTENANCE_TASK_TYPE]: async ({ tx, tenantId, now }) => {
       await runDailyMaintenance(tx, tenantId, now);

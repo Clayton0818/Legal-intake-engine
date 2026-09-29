@@ -1,6 +1,6 @@
 import { conflictRoute } from "@/app/api/conflict-check/_lib/route";
 import { confirmHistoryImport, getConflictSettings, updateConflictSettings } from "@/engines/conflict-check/settingsService";
-import { readBody } from "@/engines/conflict-check/http";
+import { optBool, optString, readBody } from "@/engines/conflict-check/http";
 import { ConflictError } from "@/engines/conflict-check/util";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,14 @@ export async function PATCH(req: Request) {
   );
 }
 
-/** { action: "confirm_history_import" }: the firm's history import (c96) is complete (conflicts attorney). */
+/**
+ * { action: "confirm_history_import", noPriorHistory?, attestation? }: the firm's history import (c96)
+ * is complete (conflicts attorney). Needs a committed import or a written no-history attestation.
+ */
 export async function POST(req: Request) {
   return conflictRoute("POST /api/conflict-check/settings", req, async ({ tx, tenantId, access }) => {
     const body = await readBody(req);
     if (body.action !== "confirm_history_import") throw new ConflictError("Unknown action.", 422);
-    return confirmHistoryImport(tx, { tenantId, access });
+    return confirmHistoryImport(tx, { tenantId, access, noPriorHistory: optBool(body, "noPriorHistory"), attestation: optString(body, "attestation") });
   });
 }
