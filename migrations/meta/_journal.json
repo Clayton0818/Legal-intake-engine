@@ -15,6 +15,13 @@
       "when": 1790251200000,
       "tag": "0001_secure_firms_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790889088796,
+      "tag": "0002_case_management_foundation",
+      "breakpoints": true
     }
   ]
 }

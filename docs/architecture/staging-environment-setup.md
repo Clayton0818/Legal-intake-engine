@@ -4,6 +4,8 @@
 **Depends on:** ADR-0001 (`c18`, PR #5 — merged).
 **Consumed by:** `c19` (data model — the worker and app both read this doc's connection conventions), `c21` (API scaffold — first thing that actually deploys to what this sets up), `c31` (branch protection — the required-checks list this doc's CI workflow feeds).
 
+**2026-10-01 update:** the `DATABASE_URL_STAGING` GitHub repo secret referenced in §2 step 5 is now set (added by Clayton). Until this date it was not — every PR into `main` since the case-management foundation PR (`#30`, 2026-09-27) had the "Cross-tenant isolation test (ADR-0001 §D5, required)" check fail loudly as a direct, intended consequence of `src/tenancy/testing.ts`'s design: that helper refuses to let a missing `DATABASE_URL` under `REQUIRE_DATABASE_TESTS=1` silently skip, specifically so a lost CI secret can never read as a passing check. Branch protection (`c31`) does not yet make this check required, so none of those failures blocked a merge — they were real signal nobody was forced to look at. **Still open as of this update:** confirming the connection string stored in the secret uses a narrower application role rather than Supabase's default `postgres` role (which holds `BYPASSRLS` — see §2 step 4). Until that's confirmed, a green isolation test here is a weaker signal than it looks like.
+
 ## 1. Why this shape, not ADR-0001's literal recommendation
 
 ADR-0001 §D7 recommends Render or Railway as a single managed platform running web service, worker, cron, and Postgres together — clean, one console, minimal ops. That recommendation assumed a paid plan. Checked against current (2026) pricing, none of the platforms the ADR considered still offer a genuinely free way to run all four pieces together: Render's free tier is web-service-only (no free background worker or cron job); Railway now requires a post-paid card with no meaningful free allowance; Fly.io's free tier is down to a 2-VM-hour trial.
@@ -62,6 +64,8 @@ None of the above alters ADR-0001's own gate: production tenant creation stays f
 ## 6. Why the two workflow files aren't in this commit
 
 GitHub Apps (and the token behind this connector) require a distinct `workflows` permission scope to create or update anything under `.github/workflows/`, separate from ordinary write access to repo contents — pushing `ci.yml` and `staging-worker.yml` through this connector failed with a 403 ("Resource not accessible by integration"). Their full content is in this PR's description instead. Adding them requires either: pasting them in through GitHub's own web UI (Add file → Create new file, under `.github/workflows/`), or granting this GitHub App the Actions/workflows write permission it's currently missing, if there's a place to do that in how this integration was installed.
+
+**2026-10-01 update:** this was resolved operationally, not by a permission change — Clayton applied workflow-file edits directly through GitHub's own web editor (github.dev) instead, which doesn't go through this connector's restricted token. The permission gap described above is still accurate for this connector itself.
 
 ## 7. Explicitly not included
 

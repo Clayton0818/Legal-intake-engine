@@ -60,7 +60,7 @@ Any card with `type: "Founder"` is Clayton's own task — reviewing/merging PRs,
   repo and unreviewed history. Treat it accordingly.
 
 - Open a pull request describing what you did, what sources you used, and open questions for human review. Never merge your own PR — that's Clayton's job (Founder card `c25`).
-- One new card of work per session. Don't sprawl across multiple cards in one sitting (the repo→board Shipped sync above doesn't count against this — that's status-checking, not new work).
+- One new card of work per session — **except** cards whose `type` is `Product`: those are handled in parallel, per Clayton's direction (2026-10-01). When picking new work, first collect every currently unblocked, unstarted `Product` card (same dependency-order, Founder-skip, and "don't duplicate in-flight work" rules as any other card) and work all of them in the same session — each gets its own branch and its own PR; never bundle several Product cards into one PR. Every other type (`Compliance`, `Engineering`, `Security`, `Go-to-Market`) still gets exactly one new card per session, independent of however many Product cards that same session also picks up. A Product-parallel batch plus one more card of some other type is the most a single session should open PRs for — don't sprawl beyond that. (The repo→board Shipped sync above doesn't count against any of this — that's status-checking, not new work.)
 - Check `docs/` and open PRs before starting anything, so you don't duplicate work already done or in flight.
 - **The connector cannot push binary files** — it encodes content as text. Images, PDFs and similar can't be committed. Extract them to text/markdown, or keep them outside the repo.
 
