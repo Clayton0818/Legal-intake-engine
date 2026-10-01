@@ -30,11 +30,11 @@ venv/
 # Next.js
 .next/
 
-# package-lock.json is deliberately not committed in this first scaffold PR —
-# it's ~5,500 auto-generated lines with no reviewable content, and CI/Render
-# both run `npm install` (not `npm ci`) accordingly. Revisit if reproducible
-# installs become worth the diff noise (e.g. once a real team reviews PRs).
-package-lock.json
+# package-lock.json IS committed (since 2026-10-01): CI runs `npm ci`, so every
+# run installs exactly the versions in the lockfile instead of re-resolving
+# ranges against the live registry (a fresh-publish 404 for
+# baseline-browser-mapping broke CI once). Update it with `npm install` and
+# commit the result alongside any package.json change.
 
 # TypeScript incremental build info
 *.tsbuildinfo
