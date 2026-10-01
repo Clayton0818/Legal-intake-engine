@@ -321,6 +321,10 @@ REVOKE UPDATE, DELETE ON "audit_events" FROM app_runtime;--> statement-breakpoin
 -- compliance_approvals is platform-level (not tenant-scoped): the app may only read it.
 CREATE POLICY app_runtime_read ON "compliance_approvals" FOR SELECT TO app_runtime USING (true);--> statement-breakpoint
 GRANT SELECT ON "compliance_approvals" TO app_runtime;--> statement-breakpoint
+-- Supabase staging has ALTER DEFAULT PRIVILEGES granting app_runtime
+-- SELECT/INSERT/UPDATE/DELETE on every new public table, so read-only must be
+-- enforced explicitly (found when applying to staging on 2026-10-01).
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON "compliance_approvals" FROM app_runtime;--> statement-breakpoint
 REVOKE ALL ON "compliance_approvals" FROM anon, authenticated;--> statement-breakpoint
 
 -- Same hardening 0001 applied to firms: Supabase grants anon/authenticated
