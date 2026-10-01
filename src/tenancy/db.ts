@@ -3,9 +3,24 @@
 // from the package's public surface. `withTenant.ts` is the only sanctioned
 // way anything outside `tenancy/` touches the database.
 
+import dns from "node:dns";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import * as schema from "@/db/schema";
+
+// Supabase's pooler host (and some direct-connection hosts) are dual-stack:
+// they publish both an A (IPv4) and an AAAA (IPv6) record. Node's default
+// DNS resolution order is "verbatim" — whatever the resolver returns — which
+// can hand back the AAAA record first even when the AAAA address has no
+// actual route from the current network. GitHub Actions runners are exactly
+// this case: they expose an IPv6 interface without a working outbound IPv6
+// route, which surfaces as `connect ENETUNREACH <ipv6 address>` even though
+// the same hostname's IPv4 address is perfectly reachable (and is in fact
+// how every other network call in CI — npm install, git — already works).
+// Forcing IPv4-first here is scoped to this process and does not require or
+// assume anything about which connection string is configured; it just
+// makes sure the reachable address is the one actually tried.
+dns.setDefaultResultOrder("ipv4first");
 
 const connectionString = process.env.DATABASE_URL;
 
