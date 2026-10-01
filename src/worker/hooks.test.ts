@@ -38,8 +38,15 @@ describe("buildRegistry", () => {
 });
 
 describe("loadEngineWorkerModules", () => {
-  it("returns nothing (and does not throw) while no engine has a worker.ts", async () => {
-    expect(await loadEngineWorkerModules()).toEqual([]);
+  it("loads every engine's worker.ts and the result builds a valid registry", async () => {
+    const modules = await loadEngineWorkerModules();
+    // The conflict-check and intake engines each ship a worker.ts. (platform's
+    // worker.ts exists but isn't discovered: 'platform' isn't in ENGINE_SLUGS
+    // yet — see the note at the top of src/engines/platform/worker.ts.)
+    expect(modules.map((m) => m.slug)).toEqual(expect.arrayContaining(["conflict-check", "intake"]));
+    // buildRegistry enforces engine-prefixed names and rejects duplicates,
+    // so this also proves the real modules are well-formed.
+    expect(() => buildRegistry(modules)).not.toThrow();
   });
 });
 
