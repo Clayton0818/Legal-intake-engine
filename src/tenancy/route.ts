@@ -5,14 +5,15 @@
 //     return tenantRoute("GET /api/document/checklist", ({ tx, tenantId }) => listChecklist(tx, tenantId));
 //   }
 //
-// - resolves the tenant (today: the temporary DEV_TENANT_ID stand-in, see
-//   ./devTenant.ts; replaced by real auth in c34 — routes do not change);
+// - resolves the tenant from the request's session (src/auth/request.ts,
+//   c34): the vendor's signed tenant claim, or DEV_TENANT_ID in dev mode —
+//   routes do not change; handlers that need the caller's identity or a
+//   permission call requirePrincipal(tx, tenantId, "<permission>");
 // - imports withTenant() lazily, so `next build` never needs DATABASE_URL;
 // - loads compliance approvals (fail safe) before the handler runs;
 // - maps a PendingApprovalError to HTTP 423 with the visible placeholder, so
 //   a gated action is visibly blocked rather than silently skipped.
 
-import { getDevTenantId } from "./devTenant";
 import type { TenantTx } from "./withTenant";
 import { PendingApprovalError } from "@/compliance/approvals";
 
@@ -50,7 +51,8 @@ export async function tenantRoute<T>(
   opts: { status?: number } = {}
 ): Promise<Response> {
   try {
-    const tenantId = getDevTenantId();
+    const { resolveRequestTenantId } = await import("@/auth/request");
+    const tenantId = await resolveRequestTenantId();
     const [{ withTenant }, { ensureServerApprovals }] = await Promise.all([
       import("./withTenant"),
       import("@/compliance/server"),
