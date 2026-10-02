@@ -29,6 +29,13 @@
       "when": 1790892018694,
       "tag": "0003_engines_conflict_intake_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790917200000,
+      "tag": "0004_revoke_rest_roles_on_0000_tables",
+      "breakpoints": true
     }
   ]
 }
