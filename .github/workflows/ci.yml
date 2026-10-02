@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
@@ -31,7 +31,7 @@ jobs:
         with:
           node-version: "20"
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Run cross-tenant isolation test
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING }}
