@@ -3,11 +3,8 @@
 // stays closed until a reviewer's sign-off is recorded with
 // `npm run compliance -- approve --gate <key> --reviewer <kind> --by "<name>"`.
 //
-// NOTE: 'platform' is not (yet) in ENGINE_SLUGS, so src/compliance/allGates.ts
-// does not auto-discover this file. Every module that uses one of these gates
-// imports this file directly, which is enough for the gate to exist at
-// runtime; listing it in `npm run compliance -- list` needs the one-line
-// shared change described in the PR (add 'platform' to the discovery list).
+// 'platform' is in ENGINE_SLUGS (since 2026-10-03), so src/compliance/allGates.ts
+// auto-discovers this file and `npm run compliance -- list` shows these gates.
 
 import { defineGate } from "@/compliance/approvals";
 

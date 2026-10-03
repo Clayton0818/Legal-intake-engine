@@ -2,9 +2,9 @@
 // background jobs (scheduled_tasks) are retrying or stuck past their SLA, and
 // resolve it once they clear. Real clock (infrastructure health).
 //
-// Discovery: src/worker/hooks.ts only loads worker modules for ENGINE_SLUGS,
-// which doesn't include 'platform' yet — see the PR's shared request. Until
-// then this module is exported and tested but not run by `npm run worker:tick`.
+// Discovery: src/worker/hooks.ts loads worker modules for every slug in
+// ENGINE_SLUGS ('platform' was added 2026-10-03), so `npm run worker:tick`
+// runs this scan once per active firm per tick.
 
 import type { EngineWorkerModule, TenantTickContext } from "@/worker/hooks";
 import { getFirmSettings } from "@/core/firmSettings";

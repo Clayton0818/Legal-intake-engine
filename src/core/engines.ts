@@ -1,4 +1,4 @@
-// The seven engine slugs (see src/engines/README.md). Each slug owns
+// The engine slugs (see src/engines/README.md). Each slug owns
 //   src/engines/<slug>/**        domain code + tests
 //   src/db/tables/<slug>.ts      its tables
 //   src/app/api/<slug>/**        its API routes
@@ -16,6 +16,7 @@ export const ENGINE_SLUGS = [
   "calendar-core",
   "billing-trust",
   "all-engines",
+  "platform",
 ] as const;
 
 export type EngineSlug = (typeof ENGINE_SLUGS)[number];
@@ -31,6 +32,7 @@ export const ENGINE_INFO: Readonly<Record<EngineSlug, { label: string; cards: st
   "calendar-core": { label: "Calendar & deadline engine — calendar core", cards: "c91–c95" },
   "billing-trust": { label: "Billing & trust engine", cards: "c50, c52, c75–c83" },
   "all-engines": { label: "All engines (cross-cutting)", cards: "c98–c105" },
+  platform: { label: "Platform (auth, ops queue, widget)", cards: "c34, c35, c37, c38" },
 };
 
 export function isEngineSlug(value: unknown): value is EngineSlug {
