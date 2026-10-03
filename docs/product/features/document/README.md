@@ -1,6 +1,6 @@
 # Document engine: feature specs
 
-**Status:** Product specs, docs only. Nothing here is built. Compliance-sensitive parts are research plus a recommended approach and are flagged for review by a licensed Texas attorney (and a CPA wherever trust money is touched) before build.
+**Status:** Product specs. c84 (the store) is built — see its design doc; the other cards here are not built yet. Compliance-sensitive parts are research plus a recommended approach and are flagged for review by a licensed Texas attorney (and a CPA wherever trust money is touched) before build.
 **Date:** 2026-09-26
 **Author:** Claude (workflow run requested by Clayton: treat every board tile labelled "Product")
 **Pilot practice area:** Family Law, Texas (c103).
@@ -12,6 +12,7 @@ These specs cover the Document engine cards in the case-management track. They b
 | Card | Title | Priority | One-line summary | Depends on |
 |---|---|---|---|---|
 | [c4](c4-e-signature-and-engagement-letter-generation.md) | E-signature & engagement letter generation | P1 | The build: an e-signature capability (envelopes, signers, signing order, tamper-evident signed PDF) plus engagement-letter drafting from c85 templates. | c85, c84, storage ADR addendum, c34, c51, c6, e-signature vendor decision + DPA |
+| [c84](c84-document-store.md) | Document store: folders, versions, search, text recognition | P0 | Built (wave 2): per-matter folders from firm templates, immutable versions with SHA-256, permission- and screen-aware Postgres full-text search, text extraction (OCR gated), access log, gated retention rules. | storage ADR addendum (vendor), c60 shared screens, c99 |
 | [c39](c39-client-signs-engagement-agreement.md) | Client signs engagement agreement | P1 | The workflow step: draft from matter + fee arrangement, lawyer approves, client signs, lawyer countersigns, stored on the matter; meets the c68 "agreement signed" gate. | c4, c85, c52, c59, c68, c10, c46, c51 |
 | [c40](c40-ask-firm-whether-documents-were-sent.md) | AI asks the firm/lawyer whether documents were sent to the client | P1 | After signing, the AI asks the responsible lawyer/staff whether each onboarding document went out by a route outside the platform, records sent / not yet / not needed, and re-asks until resolved. | c39, c4, c45, c37, c51, c6, tasks table |
 | [c41](c41-client-review-and-sign-off-before-filing.md) | AI asks the client to review and sign off documents before final filing | P1 | Lawyer approves the final draft, client approves that exact version or comments, lawyer files. Any edit restarts sign-off; deadline-near silence alerts the lawyer on the real clock. | c84, c4, c46, c44, c11, c54, c86, c6 |

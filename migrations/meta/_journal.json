@@ -36,6 +36,13 @@
       "when": 1790917200000,
       "tag": "0004_revoke_rest_roles_on_0000_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791025478189,
+      "tag": "0005_wave2_calendar_alerts_document_permissions_trust",
+      "breakpoints": true
     }
   ]
 }
