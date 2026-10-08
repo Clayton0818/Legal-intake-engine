@@ -43,6 +43,13 @@
       "when": 1791025478189,
       "tag": "0005_wave2_calendar_alerts_document_permissions_trust",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791504000000,
+      "tag": "0006_revoke_execute_on_trust_trigger_functions",
+      "breakpoints": true
     }
   ]
 }
